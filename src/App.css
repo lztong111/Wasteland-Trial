@@ -1,0 +1,150 @@
+:root {
+    color: #f5f7fa;
+    background: #101419;
+    font-family: Inter, "Microsoft YaHei", sans-serif;
+    --hud-accent: #66ddff;
+    --panel-border: rgba(140, 170, 210, 0.28);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+button {
+    padding: 8px 16px;
+    color: #fff;
+    background: #2866d7;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+}
+
+button:hover {
+    background: #3477ee;
+}
+
+button:focus-visible,
+#renderCanvas:focus-visible {
+    outline: 3px solid #7eb0ff;
+    outline-offset: -3px;
+}
+
+button.button-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+button.button-secondary:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.status-panel {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: 12px;
+    padding:
+        max(24px, env(safe-area-inset-top, 0px))
+        max(24px, env(safe-area-inset-right, 0px))
+        max(24px, env(safe-area-inset-bottom, 0px))
+        max(24px, env(safe-area-inset-left, 0px));
+    color: #fff;
+    text-align: center;
+    background: radial-gradient(ellipse at center, #1a222c 0%, #101419 70%);
+    z-index: 3;
+    box-sizing: border-box;
+}
+
+.status-panel--error {
+    background: radial-gradient(ellipse at center, #2a1818 0%, #1a1010 70%);
+}
+
+.status-panel__card {
+    display: grid;
+    gap: 10px;
+    justify-items: center;
+    width: min(320px, 100%);
+    padding: 28px 32px;
+    background: rgba(12, 18, 26, 0.85);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    box-sizing: border-box;
+}
+
+.status-panel__card--error {
+    background: rgba(36, 18, 18, 0.9);
+    border-color: rgba(255, 120, 100, 0.35);
+}
+
+.status-panel__hint {
+    font-size: 13px;
+    color: rgba(245, 247, 250, 0.65);
+}
+
+.status-panel__message {
+    max-width: 360px;
+    font-size: 14px;
+    color: rgba(255, 220, 210, 0.9);
+    word-break: break-word;
+}
+
+.status-panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 6px;
+}
+
+.status-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(102, 221, 255, 0.2);
+    border-top-color: var(--hud-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 640px) {
+    .status-panel {
+        font-size: 14px;
+        padding:
+            max(16px, env(safe-area-inset-top, 0px))
+            max(16px, env(safe-area-inset-right, 0px))
+            max(16px, env(safe-area-inset-bottom, 0px))
+            max(16px, env(safe-area-inset-left, 0px));
+    }
+
+    .status-panel__card {
+        padding: 22px 18px;
+    }
+
+    .status-panel__actions {
+        width: 100%;
+    }
+
+    .status-panel__actions button {
+        flex: 1 1 auto;
+        min-width: 120px;
+    }
+}
+
+@media (max-height: 500px) {
+    .status-panel__card {
+        padding: 16px 18px;
+        gap: 8px;
+    }
+
+    .status-spinner {
+        width: 28px;
+        height: 28px;
+    }
+}
