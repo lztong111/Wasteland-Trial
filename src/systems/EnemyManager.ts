@@ -107,6 +107,10 @@ export class EnemyManager {
                     const applied = this.rpgManager.takeDamage(enemy.attackDamage);
                     enemy.attackCooldownSeconds = enemyConfig.attackCooldownSeconds;
                     if (applied) {
+                        this.player.triggerAnimation?.(
+                            this.rpgManager.isDead ? 'death' : 'hit',
+                            this.rpgManager.isDead ? 1.1 : 0.24
+                        );
                         this.player.applyKnockback(toPlayer.normalize());
                         this.audio?.play('hurt');
                         this.onFeedback({ type: 'toast', text: '受到攻击', kind: 'warning' });

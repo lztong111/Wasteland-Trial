@@ -9,7 +9,7 @@ import { PhysicsMotionType, PhysicsShapeType } from '@babylonjs/core/Physics/v2/
 import { Scene } from '@babylonjs/core/scene';
 import { InputManager, Action } from '../systems/InputManager';
 import { gameConfig } from '../config/gameConfig';
-import { PlayerModel } from '../models/PlayerModel';
+import { PlayerModel, type PlayerActionState } from '../models/PlayerModel';
 import type { GltfAssetSource, GltfLoadProgress } from '../models/GltfModelLoader';
 
 export class Player {
@@ -102,7 +102,12 @@ export class Player {
         this.dodgeDirection.normalize();
         this.facingRoot.rotation.y = Math.atan2(this.dodgeDirection.x, this.dodgeDirection.z);
         this.dodgeRemainingSeconds = gameConfig.player.dodgeDurationSeconds;
+        this.model.triggerAction('dodge', gameConfig.player.dodgeDurationSeconds);
         return true;
+    }
+
+    public triggerAnimation(state: PlayerActionState, durationSeconds: number): void {
+        this.model.triggerAction(state, durationSeconds);
     }
 
     public update(camera: ArcRotateCamera, deltaSeconds: number, canControl = true) {

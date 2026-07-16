@@ -125,6 +125,12 @@ export class CombatManager {
         this.swingElapsedSeconds = 0;
         this.hitChecked = false;
         this.swingStartRotation = this.weaponModel.root.rotation.clone();
+        this.player.triggerAnimation?.(
+            'attack',
+            kind === 'heavy'
+                ? combatConfig.heavySwingSeconds
+                : combatConfig.meleeComboSwingSeconds[comboStage - 1]
+        );
         this.weaponModel.setAttackGlow(1);
         this.spawnMeleeEffect(kind === 'heavy' ? 1.35 : 1);
         this.audio?.play('melee');
@@ -133,6 +139,7 @@ export class CombatManager {
     public triggerRangedAttack(aimPoint: Vector3): void {
         if (this.rangedCooldownSeconds > 0) return;
         this.rangedCooldownSeconds = combatConfig.rangedCooldownSeconds;
+        this.player.triggerAnimation?.('attack', 0.35);
         this.audio?.play('ranged');
 
         const playerPosition = this.player.mesh.getAbsolutePosition();

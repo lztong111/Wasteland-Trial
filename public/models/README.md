@@ -1,11 +1,21 @@
 # 角色模型资源
 
+## QuaterniusAnimationLibrary.gltf
+
+- 来源：Quaternius Universal Animation Library（通过公开镜像仓库获取）
+- 原始地址：`https://quaternius.itch.io/universal-animation-library`
+- 下载镜像：`https://github.com/J-Ponzo/gltf-universal-animation-library`
+- 授权：CC0 1.0
+- 作者署名：Quaternius
+- 配套文件：`AnimationLibrary_Godot_Standard.bin`
+- 用途：玩家角色骨骼和完整战斗动作
+
+当前接入的动作包括 `Idle_Loop`、`Walk_Loop`、`Jog_Fwd_Loop`、`Sword_Attack`、`Hit_Chest`、`Death01` 和 `Roll`。游戏状态别名会自动匹配这些名称；如果后续模型缺少某个动作，则由运行时骨骼姿态回退层补全。
+
 ## Xbot.glb
 
 - 来源：Babylon.js 官方 Assets 仓库
 - 原始地址：`https://github.com/BabylonJS/Assets/blob/master/meshes/Xbot.glb`
 - 授权：Creative Commons Attribution 4.0 International（CC BY 4.0）
 - 署名：Babylon.js Assets contributors
-- 用途：玩家角色骨骼、材质以及移动动画的真实 GLB 接入验证
-
-模型包含 Mixamo 人形骨骼和 `idle`、`run`、`walk` 等动画。当前资源不包含攻击、受击、死亡和闪避动作，因此这些状态仍由现有武器摆动和移动反馈承担；后续替换成完整战斗动画 GLB 时应保留本文件中的来源与授权记录。
+- 用途：Quaternius 资源加载失败时的程序化模型/基础动作回退

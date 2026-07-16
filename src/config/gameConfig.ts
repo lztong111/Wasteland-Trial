@@ -7,7 +7,7 @@ export const gameConfig = {
         maxDeltaSeconds: 0.1
     },
     world: {
-        groundSize: 100,
+        groundSize: 160,
         enemySpawnPoints: [
             [6, 1, 6],
             [-7, 1, 4],
@@ -150,7 +150,7 @@ export const gameConfig = {
     assets: {
         playerModel: {
             rootUrl: '/models/',
-            fileName: 'Xbot.glb'
+            fileName: 'QuaterniusAnimationLibrary.gltf'
         } as { rootUrl: string; fileName: string } | null
     }
 } as const;

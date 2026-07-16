@@ -49,4 +49,9 @@ export class GltfAnimationController {
         this.groups.forEach(group => group.stop());
         this.currentName = null;
     }
+
+    public stop(): void {
+        this.groups.forEach(group => group.stop());
+        this.currentName = null;
+    }
 }

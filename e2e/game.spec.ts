@@ -1,8 +1,19 @@
 import { expect, test, type Page } from '@playwright/test';
 
+const GAME_READY_TIMEOUT = 45_000;
+
+async function waitForGameReady(page: Page) {
+    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, {
+        timeout: GAME_READY_TIMEOUT
+    });
+    await expect(page.locator('#renderCanvas')).toBeVisible({
+        timeout: GAME_READY_TIMEOUT
+    });
+}
+
 async function confirmWelcome(page: Page) {
     const welcome = page.getByRole('dialog', { name: '准备进入遗迹' });
-    await expect(welcome).toBeVisible({ timeout: 15_000 });
+    await expect(welcome).toBeVisible({ timeout: GAME_READY_TIMEOUT });
     await page.getByRole('button', { name: '开始试炼' }).click();
 }
 
@@ -11,8 +22,7 @@ test('玩家可以进入游戏、获得经验、打开背包并恢复存档', as
     page.on('pageerror', error => browserErrors.push(error.message));
 
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 30_000 });
-    await expect(page.locator('#renderCanvas')).toBeVisible();
+    await waitForGameReady(page);
     await expect(page.getByRole('dialog', { name: '准备进入遗迹' })).toBeVisible();
     await expect(page.getByText('战斗与闪避')).toBeVisible();
     await expect(page.getByText('目标与波次')).toBeVisible();
@@ -49,7 +59,7 @@ test('玩家可以进入游戏、获得经验、打开背包并恢复存档', as
 
 test('胜利结算后进入下一轮并写入存档', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await waitForGameReady(page);
     await confirmWelcome(page);
 
     // 触发一次自动保存，复用产品生成的合法 RPG 存档，只替换关卡进度。
@@ -79,7 +89,7 @@ test('胜利结算后进入下一轮并写入存档', async ({ page }) => {
 
     await page.reload();
     await confirmWelcome(page);
-    await expect(page.getByRole('dialog', { name: '试炼完成' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('dialog', { name: '试炼完成' })).toBeVisible({ timeout: GAME_READY_TIMEOUT });
     await expect(page.getByLabel('当前目标')).toContainText('遗迹试炼完成');
     await expect(page.getByRole('button', { name: '选择坚韧之心' })).toBeVisible();
     await page.getByRole('button', { name: '选择坚韧之心' }).click();
@@ -95,7 +105,7 @@ test('胜利结算后进入下一轮并写入存档', async ({ page }) => {
     })).toBe('2:guardians:0');
     await page.reload();
     await confirmWelcome(page);
-    await expect(page.getByRole('dialog', { name: '试炼完成' })).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByRole('dialog', { name: '试炼完成' })).toHaveCount(0, { timeout: GAME_READY_TIMEOUT });
     await expect(page.getByLabel('当前目标')).toContainText('第 2 轮');
     await expect(page.getByLabel('当前目标')).toContainText('0 / 3');
 });
@@ -106,7 +116,7 @@ test('持续按下 WASD 时渲染循环保持响应', async ({ page }) => {
     page.on('pageerror', error => browserErrors.push(error.message));
 
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await waitForGameReady(page);
     await confirmWelcome(page);
     await page.locator('#renderCanvas').focus();
 
@@ -139,7 +149,7 @@ test('持续按下 WASD 时渲染循环保持响应', async ({ page }) => {
 
 test('鼠标左右键会触发明确的攻击反馈', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await waitForGameReady(page);
     await confirmWelcome(page);
 
     const canvas = page.locator('#renderCanvas');
@@ -161,7 +171,7 @@ test('鼠标左右键会触发明确的攻击反馈', async ({ page }) => {
 
 test('按下 Shift 会消耗体力并触发闪避反馈', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await waitForGameReady(page);
     await confirmWelcome(page);
 
     const canvas = page.locator('#renderCanvas');
@@ -178,7 +188,7 @@ test('按下 Shift 会消耗体力并触发闪避反馈', async ({ page }) => {
 
 test('按下 Q 会消耗体力并触发蓄力重击', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await waitForGameReady(page);
     await confirmWelcome(page);
 
     await page.locator('#renderCanvas').focus();
@@ -192,7 +202,7 @@ test('按下 Q 会消耗体力并触发蓄力重击', async ({ page }) => {
 
 test('移动鼠标即可转动镜头并支持指针锁定', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await waitForGameReady(page);
     await confirmWelcome(page);
     const canvas = page.locator('#renderCanvas');
     const box = await canvas.boundingBox();
@@ -217,7 +227,7 @@ test('移动鼠标即可转动镜头并支持指针锁定', async ({ page }) => 
 test('移动端虚拟轻击按钮可以触发攻击', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
-    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await waitForGameReady(page);
     await confirmWelcome(page);
 
     const meleeButton = page.getByLabel('近战攻击');

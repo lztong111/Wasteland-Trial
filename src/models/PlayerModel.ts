@@ -1,6 +1,6 @@
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.pure';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder.pure';
 import { CreateIcoSphere } from '@babylonjs/core/Meshes/Builders/icoSphereBuilder.pure';
@@ -26,6 +26,19 @@ interface PlayerPalette {
     eye: StandardMaterial;
 }
 
+export type PlayerActionState = 'attack' | 'hit' | 'death' | 'dodge';
+
+interface ActivePlayerAction {
+    state: PlayerActionState;
+    elapsedSeconds: number;
+    durationSeconds: number;
+}
+
+interface ExternalNodePose {
+    rotation: Vector3;
+    rotationQuaternion: Quaternion | null;
+}
+
 export class PlayerModel {
     public readonly root: TransformNode;
     public readonly weaponAnchor: TransformNode;
@@ -41,6 +54,9 @@ export class PlayerModel {
     private animationTime = 0;
     private externalModel: LoadedGltfModel | null = null;
     private externalAnimations: GltfAnimationController | null = null;
+    private externalActionNodes: TransformNode[] = [];
+    private readonly externalActionBaseRotations = new Map<TransformNode, ExternalNodePose>();
+    private activeAction: ActivePlayerAction | null = null;
 
     public constructor(scene: Scene, parent: TransformNode) {
         this.followTarget = parent;
@@ -72,10 +88,34 @@ export class PlayerModel {
     public update(deltaSeconds: number, isMoving: boolean, dodgeProgress: number | null = null): void {
         this.animationTime += deltaSeconds;
         if (this.externalModel) {
+            if (this.activeAction && (
+                this.activeAction.elapsedSeconds < this.activeAction.durationSeconds
+                || this.activeAction.state === 'death'
+            )) {
+                const action = this.activeAction;
+                const progress = Math.min(
+                    1,
+                    action.elapsedSeconds / Math.max(0.01, action.durationSeconds)
+                );
+                const played = this.externalAnimations?.play(action.state, false) ?? false;
+                if (!played) this.applyExternalAction(action.state, progress);
+                action.elapsedSeconds = Math.min(
+                    action.durationSeconds,
+                    action.elapsedSeconds + deltaSeconds
+                );
+                this.updateGroundShadow();
+                return;
+            }
             const state: GltfAnimationState = dodgeProgress !== null
                 ? 'dodge'
                 : isMoving ? 'run' : 'idle';
-            this.externalAnimations?.play(state);
+            if (dodgeProgress !== null) {
+                const played = this.externalAnimations?.play('dodge', false) ?? false;
+                if (!played) this.applyExternalAction('dodge', dodgeProgress);
+            } else {
+                this.externalAnimations?.play(state);
+                this.resetExternalActionPose();
+            }
             this.updateGroundShadow();
             return;
         }
@@ -105,6 +145,16 @@ export class PlayerModel {
         this.updateGroundShadow();
     }
 
+    public triggerAction(state: PlayerActionState, durationSeconds: number): void {
+        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return;
+        this.activeAction = {
+            state,
+            elapsedSeconds: 0,
+            durationSeconds
+        };
+        this.externalAnimations?.stop();
+    }
+
     public async loadExternalModel(
         source: GltfAssetSource,
         onProgress?: (progress: GltfLoadProgress) => void
@@ -119,11 +169,28 @@ export class PlayerModel {
         this.externalModel = loaded;
         this.externalModel.root.parent = this.root;
         this.externalAnimations = new GltfAnimationController(loaded.animationGroups);
+        this.externalActionNodes = [
+            // 同时覆盖 Mixamo、Quaternius 等常见导出器的骨骼命名，保证回退动作不依赖单一资源。
+            'RightArm', 'RightForeArm', 'LeftArm', 'LeftForeArm', 'Spine', 'Hips',
+            'DEF-upper_arm.R', 'DEF-forearm.R', 'DEF-upper_arm.L', 'DEF-forearm.L',
+            'DEF-spine.003', 'DEF-spine.002', 'DEF-hips'
+        ]
+            .map(name => loaded.findNode(name))
+            .filter((node): node is TransformNode => node !== null);
+        this.externalActionBaseRotations.clear();
+        this.externalActionNodes.forEach(node => {
+            this.externalActionBaseRotations.set(node, {
+                rotation: node.rotation.clone(),
+                rotationQuaternion: node.rotationQuaternion?.clone() ?? null
+            });
+        });
+        this.activeAction = null;
 
         // 有正式骨骼挂点时把武器锚点迁移过去；没有挂点仍保留程序化模型降级。
         const weaponNode = loaded.findNode('weaponAnchor')
             ?? loaded.findNode('hand_r')
-            ?? loaded.findNode('RightHand');
+            ?? loaded.findNode('RightHand')
+            ?? loaded.findNode('DEF-hand.R');
         if (weaponNode) {
             this.weaponAnchor.parent = weaponNode;
             this.weaponAnchor.position.setAll(0);
@@ -146,9 +213,75 @@ export class PlayerModel {
         this.externalModel?.dispose();
         this.externalAnimations = null;
         this.externalModel = null;
+        this.externalActionNodes = [];
+        this.externalActionBaseRotations.clear();
         this.groundShadow.dispose();
         this.root.dispose(false);
         this.materials.forEach(material => material.dispose());
+    }
+
+    private resetExternalActionPose(): void {
+        this.externalActionBaseRotations.forEach((pose, node) => {
+            node.rotation.copyFrom(pose.rotation);
+            if (pose.rotationQuaternion) {
+                node.rotationQuaternion ??= Quaternion.Identity();
+                node.rotationQuaternion.copyFrom(pose.rotationQuaternion);
+            }
+        });
+    }
+
+    private rotateExternalNode(node: TransformNode | undefined, delta: Vector3): void {
+        if (!node) return;
+        const pose = this.externalActionBaseRotations.get(node);
+        if (pose?.rotationQuaternion) {
+            node.rotationQuaternion ??= Quaternion.Identity();
+            pose.rotationQuaternion.multiplyToRef(
+                Quaternion.RotationYawPitchRoll(delta.y, delta.x, delta.z),
+                node.rotationQuaternion
+            );
+            return;
+        }
+        node.rotation.addInPlace(delta);
+    }
+
+    private applyExternalAction(state: PlayerActionState, progress: number): void {
+        this.resetExternalActionPose();
+        const wave = Math.sin(Math.min(1, progress) * Math.PI);
+        const rightArm = this.findExternalActionNode('rightarm', 'upper_arm.r');
+        const rightForeArm = this.findExternalActionNode('rightforearm', 'forearm.r');
+        const leftArm = this.findExternalActionNode('leftarm', 'upper_arm.l');
+        const spine = this.findExternalActionNode('spine');
+        const hips = this.findExternalActionNode('hips');
+
+        switch (state) {
+            case 'attack':
+                this.rotateExternalNode(rightArm, new Vector3(0, 0, -wave * 1.15));
+                this.rotateExternalNode(rightForeArm, new Vector3(0, 0, -wave * 0.85));
+                this.rotateExternalNode(spine, new Vector3(0, wave * 0.2, 0));
+                break;
+            case 'hit':
+                this.rotateExternalNode(spine, new Vector3(0, 0, Math.sin(progress * Math.PI * 2) * 0.18));
+                this.rotateExternalNode(leftArm, new Vector3(0, 0, -wave * 0.35));
+                this.rotateExternalNode(rightArm, new Vector3(0, 0, wave * 0.35));
+                break;
+            case 'death':
+                this.rotateExternalNode(hips, new Vector3(0, 0, -progress * 1.2));
+                this.rotateExternalNode(spine, new Vector3(0, 0, -progress * 0.55));
+                break;
+            case 'dodge':
+                this.rotateExternalNode(hips, new Vector3(-wave * 0.75, 0, 0));
+                this.rotateExternalNode(spine, new Vector3(-wave * 0.55, 0, 0));
+                this.rotateExternalNode(leftArm, new Vector3(-wave * 0.45, 0, 0));
+                this.rotateExternalNode(rightArm, new Vector3(-wave * 0.45, 0, 0));
+                break;
+        }
+    }
+
+    private findExternalActionNode(...fragments: string[]): TransformNode | undefined {
+        return this.externalActionNodes.find(node => {
+            const name = node.name.toLowerCase();
+            return fragments.some(fragment => name.includes(fragment));
+        });
     }
 
     private createTorso(palette: PlayerPalette, scene: Scene): void {

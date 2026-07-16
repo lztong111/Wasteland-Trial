@@ -129,26 +129,6 @@ export class EnvironmentModel {
         this.mergeStaticMeshes('pathSlabsDark', darkSlabs, palette.stoneDark);
         this.mergeStaticMeshes('pathSlabsLight', lightSlabs, palette.stone);
 
-        this.createCollisionBox(
-            'worldBoundaryNorth',
-            { width: size, height: 3, depth: 0.6 },
-            new Vector3(0, 1.5, size / 2)
-        );
-        this.createCollisionBox(
-            'worldBoundarySouth',
-            { width: size, height: 3, depth: 0.6 },
-            new Vector3(0, 1.5, -size / 2)
-        );
-        this.createCollisionBox(
-            'worldBoundaryEast',
-            { width: 0.6, height: 3, depth: size },
-            new Vector3(size / 2, 1.5, 0)
-        );
-        this.createCollisionBox(
-            'worldBoundaryWest',
-            { width: 0.6, height: 3, depth: size },
-            new Vector3(-size / 2, 1.5, 0)
-        );
     }
 
     private createPathBorders(palette: MaterialPalette): void {
@@ -165,7 +145,13 @@ export class EnvironmentModel {
                 border.rotation.y = 0.12;
                 border.material = palette.stoneDark;
                 border.receiveShadows = true;
-                this.trackStaticCollider(border);
+                this.trackMesh(border);
+                this.createCompoundCollisionBox(
+                    `pathBorderCollider_${index}_${side}`,
+                    { width: 0.42, height: 0.5, depth: 1.9 },
+                    position.add(new Vector3(0, 0.25, 0)),
+                    0.12
+                );
 
                 const cap = CreateIcoSphere(
                     `pathBorderCap_${index}_${side}`,
@@ -179,15 +165,6 @@ export class EnvironmentModel {
             }
         }
 
-        // 道路边界使用两条长碰撞体，避免每块装饰石都创建 Havok 刚体。
-        for (const side of [-1, 1]) {
-            this.createCollisionBox(
-                `pathEdgeCollider_${side}`,
-                { width: 0.55, height: 1.2, depth: 56 },
-                this.pathPoint(4, side * 4.7).add(new Vector3(0, 0.6, 0)),
-                0.12
-            );
-        }
     }
 
     private createCentralPlaza(palette: MaterialPalette): void {
@@ -384,6 +361,11 @@ export class EnvironmentModel {
             trunk.rotation.z = (index % 3 - 1) * 0.05;
             trunk.material = palette.trunk;
             trunks.push(trunk);
+            this.createCompoundCollisionBox(
+                `treeCollider_${index}`,
+                { width: 0.8, height: 2.8, depth: 0.8 },
+                new Vector3(x, 1.4, z)
+            );
 
             const lowerCrown = CreateCylinder(
                 `treeCrownLower_${index}`,
@@ -423,15 +405,12 @@ export class EnvironmentModel {
             rock.position = new Vector3(x, size * 0.48, z);
             rock.rotation = new Vector3(index * 0.37, index * 0.61, index * 0.19);
             rock.material = index % 2 === 0 ? palette.stone : palette.stoneDark;
-            if (index < 2) {
-                // 只为靠近主路的岩石建立碰撞，远处装饰岩石不参与物理计算。
-                this.createCollisionBox(
-                    `rockCollider_${index}`,
-                    { width: size * 1.55, height: size, depth: size * 1.35 },
-                    new Vector3(x, size * 0.5, z),
-                    index * 0.61
-                );
-            }
+            this.createCompoundCollisionBox(
+                `rockCollider_${index}`,
+                { width: size * 1.55, height: size, depth: size * 1.35 },
+                new Vector3(x, size * 0.5, z),
+                index * 0.61
+            );
             (index % 2 === 0 ? lightRocks : darkRocks).push(rock);
         });
         this.mergeStaticMeshes('rocksLight', lightRocks, palette.stone);
@@ -536,7 +515,7 @@ export class EnvironmentModel {
         ));
     }
 
-    private createCollisionBox(
+    private createCompoundCollisionBox(
         name: string,
         size: { width: number; height: number; depth: number },
         position: Vector3,
@@ -546,9 +525,9 @@ export class EnvironmentModel {
         collider.position.copyFrom(position);
         collider.rotation.y = rotationY;
         collider.visibility = 0;
-        collider.isPickable = false;
-        collider.freezeWorldMatrix();
-        this.meshes.push(collider);
+        this.trackMesh(collider);
+        // 每个树木、岩石或路缘石使用独立盒体，避免合并网格后形成昂贵的 MESH 形状，
+        // 也避免一个大包围盒把本来可以通行的区域错误地封死。
         this.aggregates.push(new PhysicsAggregate(
             collider,
             PhysicsShapeType.BOX,
