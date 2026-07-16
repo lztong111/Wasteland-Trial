@@ -114,6 +114,15 @@ export class RPGManager {
         return true;
     }
 
+    public grantInvulnerability(seconds: number): void {
+        this.assertNonNegativeFinite(seconds, '无敌时间');
+        if (seconds === 0 || this.isDead) return;
+
+        // 多种无敌来源重叠时只延长、不缩短，避免闪避覆盖受击保护时间。
+        this.invulnerabilitySeconds = Math.max(this.invulnerabilitySeconds, seconds);
+        this.commitStats();
+    }
+
     public heal(amount: number): void {
         this.assertNonNegativeFinite(amount, '治疗值');
         if (amount === 0 || this.isDead) return;

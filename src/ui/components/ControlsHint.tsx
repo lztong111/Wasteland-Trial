@@ -67,8 +67,8 @@ export function ControlsHint({ forceExpanded = false }: ControlsHintProps) {
 
     return (
         <div className="ui-panel controls-hint" aria-label="操作说明">
-            <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · <kbd>空格</kbd> 跳跃</div>
-            <div>左键近战 · 右键远程 · <kbd>E</kbd> 交互</div>
+            <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动 · <kbd>空格</kbd> 跳跃 · <kbd>Shift</kbd> 闪避</div>
+            <div>左键三段连击 · <kbd>Q</kbd> 重击 · 右键远程 · <kbd>E</kbd> 交互</div>
             <div>移动鼠标转动镜头 · <kbd>Esc</kbd> 暂停 / 释放鼠标</div>
             <div><kbd>I</kbd> / <kbd>Tab</kbd> 背包 · <kbd>H</kbd> 收起帮助</div>
             {isDev && <div className="controls-hint__dev">无交互物时 <kbd>E</kbd> 仍可加测试经验</div>}

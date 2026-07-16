@@ -14,10 +14,15 @@ import { InventoryPanel } from './components/InventoryPanel';
 import { LevelUpBanner } from './components/LevelUpBanner';
 import { PauseMenu } from './components/PauseMenu';
 import { StatsPanel } from './components/StatsPanel';
+import { ObjectiveTracker } from './components/ObjectiveTracker';
+import { VictoryOverlay } from './components/VictoryOverlay';
+import { WelcomeOverlay } from './components/WelcomeOverlay';
+import type { GameProgressManager, ObjectiveView } from '../data/GameProgressManager';
 import './GameUI.css';
 
 interface UIProps {
     rpgManager: RPGManager;
+    progressManager: GameProgressManager;
     feedbackEvents: ReadonlyArray<{ id: number; feedback: UiFeedback }>;
     cooldowns: CombatCooldownState;
     interactPrompt: InteractPrompt | null;
@@ -37,6 +42,7 @@ interface ToastState {
 
 export const GameUI: FC<UIProps> = ({
     rpgManager,
+    progressManager,
     feedbackEvents,
     cooldowns,
     interactPrompt,
@@ -61,6 +67,10 @@ export const GameUI: FC<UIProps> = ({
     const [hitVignette, setHitVignette] = useState(false);
     const [crosshairActive, setCrosshairActive] = useState(false);
     const [invulnerable, setInvulnerable] = useState(false);
+    const [showWelcome, setShowWelcome] = useState(true);
+    const welcomePauseRequested = useRef(false);
+    const [objective, setObjective] = useState<ObjectiveView>(progressManager.objective);
+    const [progress, setProgress] = useState(progressManager.progress);
     const toastTimerRef = useRef<number | null>(null);
     const crosshairTimerRef = useRef<number | null>(null);
     const invulnTimerRef = useRef<number | null>(null);
@@ -71,6 +81,19 @@ export const GameUI: FC<UIProps> = ({
         setEquippedWeapon(rpgManager.equippedWeapon);
         setTotalDamage(rpgManager.getTotalDamage());
     }, [rpgManager]);
+
+    useEffect(() => {
+        return progressManager.subscribe(() => {
+            setObjective(progressManager.objective);
+            setProgress(progressManager.progress);
+        });
+    }, [progressManager]);
+
+    useEffect(() => {
+        if (welcomePauseRequested.current) return;
+        welcomePauseRequested.current = true;
+        onPauseChange(true);
+    }, [onPauseChange]);
 
     useEffect(() => {
         const unsubscribeStats = rpgManager.subscribeStats(() => {
@@ -99,6 +122,7 @@ export const GameUI: FC<UIProps> = ({
         });
 
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (showWelcome) return;
             if (event.code === 'Escape') {
                 event.preventDefault();
                 if (showInventory) {
@@ -130,6 +154,7 @@ export const GameUI: FC<UIProps> = ({
         showInventory,
         paused,
         onPauseChange,
+        showWelcome,
         onPlayLevelUpSound,
         onPlayUiSound
     ]);
@@ -206,6 +231,7 @@ export const GameUI: FC<UIProps> = ({
                 totalDamage={totalDamage}
                 invulnerable={invulnerable}
             />
+            <ObjectiveTracker objective={objective} trialNumber={progress.trialNumber} />
 
             {!paused && !showInventory && interactPrompt && (
                 <InteractPromptBanner label={interactPrompt.label} />
@@ -228,11 +254,30 @@ export const GameUI: FC<UIProps> = ({
                 />
             )}
 
-            {paused && (
+            {paused && !showWelcome && (
                 <PauseMenu
                     settings={settings}
                     onResume={() => onPauseChange(false)}
                     onChange={onSettingsChange}
+                />
+            )}
+
+            {progress.phase === 'victory' && !progress.victoryAcknowledged && !paused && (
+                <VictoryOverlay
+                    level={stats.level}
+                    trialNumber={progress.trialNumber}
+                    defeatedGuardians={progress.defeatedGuardians}
+                    onContinue={() => progressManager.startNextTrial()}
+                />
+            )}
+
+            {showWelcome && (
+                <WelcomeOverlay
+                    onStart={() => {
+                        setShowWelcome(false);
+                        onPauseChange(false);
+                        onPlayUiSound();
+                    }}
                 />
             )}
         </div>

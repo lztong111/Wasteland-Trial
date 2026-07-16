@@ -98,6 +98,252 @@
     padding: 12px 14px;
 }
 
+.objective-tracker {
+    position: absolute;
+    top: var(--hud-edge-top);
+    right: var(--hud-edge-right);
+    width: min(290px, calc(100% - var(--hud-edge-left) - var(--hud-edge-right)));
+    padding: 12px 14px;
+}
+
+.objective-tracker__eyebrow {
+    margin-bottom: 5px;
+    color: var(--text-muted);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.objective-tracker__title {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: #f3f7fb;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.objective-tracker__title > span {
+    color: #66ddff;
+}
+
+.objective-tracker__title strong {
+    margin-left: auto;
+    color: #66ddff;
+    font-size: 13px;
+}
+
+.objective-tracker p {
+    margin: 5px 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.objective-tracker--complete {
+    border-color: rgba(104, 224, 145, 0.45);
+}
+
+.objective-tracker--complete .objective-tracker__title > span,
+.objective-tracker--complete .objective-tracker__title strong {
+    color: #68e091;
+}
+
+.victory-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 55;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    pointer-events: auto;
+    background: radial-gradient(circle, rgba(20, 56, 72, 0.38), rgba(5, 9, 14, 0.78));
+    backdrop-filter: blur(4px);
+}
+
+.victory-card {
+    width: min(410px, 100%);
+    padding: 30px;
+    text-align: center;
+    background: linear-gradient(160deg, rgba(19, 39, 52, 0.98), rgba(10, 18, 27, 0.98));
+    border: 1px solid rgba(102, 221, 255, 0.48);
+    border-radius: 14px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+
+.victory-card__sigil {
+    color: #66ddff;
+    font-size: 42px;
+    text-shadow: 0 0 24px rgba(102, 221, 255, 0.75);
+}
+
+.victory-card__eyebrow {
+    margin: 8px 0 2px;
+    color: #8fb5c8;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+}
+
+.victory-card h2 {
+    margin: 4px 0 10px;
+    font-size: 28px;
+}
+
+.victory-card > p:not(.victory-card__eyebrow) {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.victory-card__stats {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin: 18px 0;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.victory-card__stats strong {
+    color: #fff;
+}
+
+/* —— 开局玩法说明 —— */
+.welcome-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(4, 8, 12, 0.84);
+    backdrop-filter: blur(7px);
+    pointer-events: auto;
+    overflow: auto;
+}
+
+.welcome-card {
+    width: min(980px, 100%);
+    max-height: min(760px, 100%);
+    padding: clamp(20px, 4vw, 34px);
+    overflow: auto;
+    background: linear-gradient(145deg, rgba(18, 34, 45, 0.98), rgba(9, 16, 24, 0.98));
+    border: 1px solid rgba(102, 221, 255, 0.42);
+    border-radius: 12px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
+}
+
+.welcome-card__header {
+    max-width: 650px;
+    margin-bottom: 22px;
+}
+
+.welcome-card__eyebrow {
+    margin: 0 0 6px;
+    color: var(--hud-accent);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+}
+
+.welcome-card h1 {
+    margin: 0;
+    font-size: clamp(24px, 4vw, 34px);
+}
+
+.welcome-card__header > p:last-child {
+    margin: 8px 0 0;
+    color: var(--hud-muted);
+    line-height: 1.55;
+}
+
+.welcome-mechanics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.welcome-mechanic {
+    overflow: hidden;
+    background: rgba(5, 12, 18, 0.64);
+    border: 1px solid rgba(140, 170, 210, 0.2);
+    border-radius: 8px;
+}
+
+.welcome-mechanic img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: #0e1922;
+}
+
+.welcome-mechanic div {
+    padding: 12px;
+}
+
+.welcome-mechanic h2 {
+    margin: 0 0 5px;
+    font-size: 15px;
+}
+
+.welcome-mechanic p {
+    margin: 0;
+    color: var(--hud-muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.welcome-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 22px;
+    color: var(--hud-muted);
+    font-size: 12px;
+}
+
+.welcome-card__footer button {
+    min-width: 128px;
+    font-weight: 700;
+}
+
+@media (max-width: 760px) {
+    .welcome-overlay {
+        place-items: start center;
+        padding: max(12px, var(--hud-edge-top)) var(--hud-edge-right) var(--hud-edge-bottom);
+    }
+
+    .welcome-card {
+        max-height: none;
+        margin: auto 0;
+        padding: 20px 16px;
+    }
+
+    .welcome-mechanics {
+        grid-template-columns: 1fr;
+    }
+
+    .welcome-mechanic {
+        display: grid;
+        grid-template-columns: minmax(120px, 34%) 1fr;
+    }
+
+    .welcome-mechanic img {
+        height: 100%;
+        min-height: 100px;
+    }
+
+    .welcome-card__footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .welcome-card__footer button {
+        width: 100%;
+    }
+}
+
 .stats-panel__header {
     display: flex;
     align-items: baseline;

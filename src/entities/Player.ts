@@ -24,6 +24,8 @@ export class Player {
     private readonly jumpForce = gameConfig.player.jumpForce;
     private isGrounded = false;
     private knockbackVelocity = Vector3.Zero();
+    private dodgeDirection = Vector3.Zero();
+    private dodgeRemainingSeconds = 0;
 
     constructor(scene: Scene, inputManager: InputManager) {
         this.scene = scene;
@@ -74,6 +76,27 @@ export class Player {
         this.knockbackVelocity = horizontal.scale(gameConfig.player.hitKnockback);
     }
 
+    public get canStartDodge(): boolean {
+        return this.isGrounded && this.dodgeRemainingSeconds <= 0;
+    }
+
+    public get isDodging(): boolean {
+        return this.dodgeRemainingSeconds > 0;
+    }
+
+    public startDodge(camera: ArcRotateCamera): boolean {
+        if (!this.canStartDodge) return false;
+
+        this.dodgeDirection = this.getInputDirection(camera);
+        if (this.dodgeDirection.lengthSquared() < 0.0001) {
+            this.dodgeDirection = this.getForwardDirection();
+        }
+        this.dodgeDirection.normalize();
+        this.facingRoot.rotation.y = Math.atan2(this.dodgeDirection.x, this.dodgeDirection.z);
+        this.dodgeRemainingSeconds = gameConfig.player.dodgeDurationSeconds;
+        return true;
+    }
+
     public update(camera: ArcRotateCamera, deltaSeconds: number, canControl = true) {
         if (!this.aggregate) return;
 
@@ -83,42 +106,28 @@ export class Player {
             this.knockbackVelocity.set(0, 0, 0);
         }
 
-        // 读取连续移动输入。
-        const forward = canControl && this.inputManager.isActive(Action.FORWARD)
-            ? 1
-            : (canControl && this.inputManager.isActive(Action.BACKWARD) ? -1 : 0);
-        const right = canControl && this.inputManager.isActive(Action.RIGHT)
-            ? 1
-            : (canControl && this.inputManager.isActive(Action.LEFT) ? -1 : 0);
-
-        // 将输入方向转换到相机所在的水平坐标系。
-        let moveVector = new Vector3(0, 0, 0);
-
-        if (forward !== 0 || right !== 0) {
-            // 垂直镜头角度不应影响地面移动方向。
-            const camForward = camera.getForwardRay().direction;
-            camForward.y = 0;
-            camForward.normalize();
-
-            const camRight = Vector3.Cross(new Vector3(0, 1, 0), camForward);
-            camRight.normalize();
-
-            // 合成相机相对的移动方向。
-            moveVector = camForward.scale(forward).add(camRight.scale(right));
-            moveVector.normalize();
-
-            moveVector.scaleInPlace(this.speed);
-
+        const inputDirection = canControl ? this.getInputDirection(camera) : Vector3.Zero();
+        let moveVector = inputDirection.scale(this.speed);
+        if (this.isDodging) {
+            this.dodgeRemainingSeconds = Math.max(0, this.dodgeRemainingSeconds - deltaSeconds);
+            moveVector = this.dodgeDirection.scale(gameConfig.player.dodgeSpeed);
+        } else if (inputDirection.lengthSquared() > 0) {
             // 只旋转视觉节点，避免直接修改动态刚体的旋转四元数。
             const targetRotation = Math.atan2(moveVector.x, moveVector.z);
             this.facingRoot.rotation.y = targetRotation;
         }
-        this.model.update(deltaSeconds, forward !== 0 || right !== 0);
+        const dodgeProgress = this.isDodging
+            ? 1 - this.dodgeRemainingSeconds / gameConfig.player.dodgeDurationSeconds
+            : null;
+        this.model.update(deltaSeconds, inputDirection.lengthSquared() > 0, dodgeProgress);
 
         // 跳跃只响应按下瞬间，避免长按造成连续冲量。
         this.checkGrounded();
 
-        if (canControl && this.inputManager.consumePress(Action.JUMP) && this.isGrounded) {
+        if (canControl
+            && !this.isDodging
+            && this.inputManager.consumePress(Action.JUMP)
+            && this.isGrounded) {
             this.aggregate.body.applyImpulse(new Vector3(0, this.jumpForce, 0), this.mesh.getAbsolutePosition());
         }
 
@@ -155,6 +164,23 @@ export class Player {
     public getForwardDirection(): Vector3 {
         const yaw = this.facingRoot.rotation.y;
         return new Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    }
+
+    private getInputDirection(camera: ArcRotateCamera): Vector3 {
+        const forward = this.inputManager.isActive(Action.FORWARD)
+            ? 1
+            : (this.inputManager.isActive(Action.BACKWARD) ? -1 : 0);
+        const right = this.inputManager.isActive(Action.RIGHT)
+            ? 1
+            : (this.inputManager.isActive(Action.LEFT) ? -1 : 0);
+        if (forward === 0 && right === 0) return Vector3.Zero();
+
+        // 垂直镜头角度不应影响地面移动方向。
+        const cameraForward = camera.getForwardRay().direction;
+        cameraForward.y = 0;
+        cameraForward.normalize();
+        const cameraRight = Vector3.Cross(Vector3.Up(), cameraForward).normalize();
+        return cameraForward.scale(forward).add(cameraRight.scale(right)).normalize();
     }
 
     public get weaponAnchor(): TransformNode {

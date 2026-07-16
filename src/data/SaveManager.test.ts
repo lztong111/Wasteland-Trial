@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { gameConfig } from '../config/gameConfig';
 import { RPGManager } from './RPGManager';
 import { SaveManager } from './SaveManager';
+import { GameProgressManager } from './GameProgressManager';
 
 class MemoryStorage {
     private readonly data = new Map<string, string>();
@@ -98,5 +99,65 @@ describe('SaveManager', () => {
 
         expect(saves.load()).toBe('invalid');
         expect(() => saves.flush()).not.toThrow();
+    });
+
+    it('保存并恢复关卡进度', () => {
+        const storage = new MemoryStorage();
+        const sourceProgress = new GameProgressManager();
+        sourceProgress.recordGuardianDefeated();
+        const sourceSave = new SaveManager(new RPGManager(), storage, sourceProgress);
+        sourceSave.flush();
+
+        const targetProgress = new GameProgressManager();
+        const result = new SaveManager(new RPGManager(), storage, targetProgress).load();
+
+        expect(result).toBe('loaded');
+        expect(targetProgress.progress.defeatedGuardians).toBe(1);
+    });
+
+    it('可以迁移第一版仅包含 RPG 数据的存档', () => {
+        const storage = new MemoryStorage();
+        const source = new RPGManager();
+        source.addXP(20);
+        storage.setItem(gameConfig.save.legacyStorageKeys[1], JSON.stringify({
+            version: 1,
+            savedAt: new Date().toISOString(),
+            rpg: source.createSaveState()
+        }));
+
+        const target = new RPGManager();
+        const progress = new GameProgressManager();
+        expect(new SaveManager(target, storage, progress).load()).toBe('loaded');
+        expect(target.stats.currentXP).toBe(20);
+        expect(progress.progress.defeatedGuardians).toBe(0);
+        expect(storage.getItem(gameConfig.save.storageKey)).not.toBeNull();
+    });
+
+    it('迁移第二版存档时保留成长数据并重置旧关卡进度', () => {
+        const storage = new MemoryStorage();
+        const source = new RPGManager();
+        source.addXP(35);
+        storage.setItem(gameConfig.save.legacyStorageKeys[0], JSON.stringify({
+            version: 2,
+            savedAt: new Date().toISOString(),
+            rpg: source.createSaveState(),
+            progress: {
+                defeatedGuardians: 3,
+                chestOpened: true,
+                shrineActivated: true,
+                shrineReadyAt: 0,
+                victoryAcknowledged: false
+            }
+        }));
+
+        const target = new RPGManager();
+        const progress = new GameProgressManager();
+        expect(new SaveManager(target, storage, progress).load()).toBe('loaded');
+        expect(target.stats.currentXP).toBe(35);
+        expect(progress.progress.defeatedGuardians).toBe(0);
+
+        const migrated = JSON.parse(storage.getItem(gameConfig.save.storageKey)!);
+        expect(migrated.version).toBe(3);
+        expect(migrated.progress.defeatedGuardians).toBe(0);
     });
 });

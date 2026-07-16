@@ -12,6 +12,7 @@ import type { RPGManager } from '../data/RPGManager';
 import type { Player } from '../entities/Player';
 import type { CombatFeedbackHandler } from '../ui/feedback';
 import type { AudioManager } from './AudioManager';
+import type { GameProgressManager } from '../data/GameProgressManager';
 
 type InteractableKind = 'shrine' | 'chest';
 
@@ -36,23 +37,29 @@ export class InteractionManager {
     private readonly interactables: Interactable[] = [];
     private readonly materials: StandardMaterial[] = [];
     private nearest: Interactable | null = null;
+    private syncedTrialNumber = 1;
 
     public constructor(
         private readonly scene: Scene,
         private readonly rpgManager: RPGManager,
         private readonly player: Player,
         private readonly onFeedback: CombatFeedbackHandler,
-        private readonly audio: AudioManager
+        private readonly audio: AudioManager,
+        private readonly progressManager: GameProgressManager | null = null
     ) {
         this.createShrine(new Vector3(-2.5, 0, 3.5));
         this.createChest(new Vector3(3.2, 0, -2.8));
+        this.syncedTrialNumber = this.progressManager?.progress.trialNumber ?? 1;
     }
 
     public update(_deltaSeconds: number): void {
+        this.syncTrialState();
         for (const item of this.interactables) {
-            item.cooldownSeconds = Math.max(0, item.cooldownSeconds - _deltaSeconds);
+            if (!this.progressManager) {
+                item.cooldownSeconds = Math.max(0, item.cooldownSeconds - _deltaSeconds);
+            }
             if (item.kind === 'shrine') {
-                const ready = item.cooldownSeconds === 0;
+                const ready = this.getCooldownSeconds(item) === 0;
                 item.material.emissiveColor = ready
                     ? new Color3(0.15, 0.75, 0.55)
                     : new Color3(0.05, 0.2, 0.18);
@@ -77,10 +84,24 @@ export class InteractionManager {
 
     public getPrompt(): InteractPrompt | null {
         if (!this.nearest || this.nearest.consumed) return null;
-        if (this.nearest.cooldownSeconds > 0) {
+        if (this.nearest.kind === 'chest' && this.progressManager && !this.progressManager.canOpenChest) {
+            return { id: this.nearest.id, label: '补给箱被封印 · 先清除守卫' };
+        }
+        if (this.nearest.kind === 'shrine'
+            && this.progressManager
+            && !this.progressManager.canActivateShrine) {
             return {
                 id: this.nearest.id,
-                label: `${this.nearest.label}（冷却 ${Math.ceil(this.nearest.cooldownSeconds)}s）`
+                label: this.progressManager.progress.chestOpened
+                    ? '神龛沉寂 · 先清除增援'
+                    : '神龛沉寂 · 先开启补给箱'
+            };
+        }
+        const cooldownSeconds = this.getCooldownSeconds(this.nearest);
+        if (cooldownSeconds > 0) {
+            return {
+                id: this.nearest.id,
+                label: `${this.nearest.label}（冷却 ${Math.ceil(cooldownSeconds)}s）`
             };
         }
         return { id: this.nearest.id, label: `按 E ${this.nearest.label}` };
@@ -88,13 +109,34 @@ export class InteractionManager {
 
     public tryInteract(): boolean {
         const target = this.nearest;
-        if (!target || target.consumed || target.cooldownSeconds > 0) return false;
+        if (!target || target.consumed || this.getCooldownSeconds(target) > 0) return false;
+
+        if (target.kind === 'chest' && this.progressManager && !this.progressManager.canOpenChest) {
+            this.onFeedback({ type: 'toast', text: '补给箱仍被守卫封印', kind: 'warning' });
+            return true;
+        }
+        if (target.kind === 'shrine'
+            && this.progressManager
+            && !this.progressManager.canActivateShrine) {
+            this.onFeedback({
+                type: 'toast',
+                text: this.progressManager.progress.chestOpened
+                    ? '必须先清除第二波守卫'
+                    : '神龛尚未回应',
+                kind: 'warning'
+            });
+            return true;
+        }
 
         if (target.kind === 'shrine') {
             const before = this.rpgManager.stats.hp;
             this.rpgManager.heal(gameConfig.world.shrineHealAmount);
             const healed = this.rpgManager.stats.hp - before;
-            target.cooldownSeconds = gameConfig.world.shrineCooldownSeconds;
+            if (this.progressManager) {
+                this.progressManager.recordShrineActivated(gameConfig.world.shrineCooldownSeconds);
+            } else {
+                target.cooldownSeconds = gameConfig.world.shrineCooldownSeconds;
+            }
             this.audio.play(healed > 0 ? 'heal' : 'ui');
             this.onFeedback({
                 type: 'toast',
@@ -113,17 +155,25 @@ export class InteractionManager {
                 description: '从宝箱中获得的浓缩药剂，恢复大量生命。',
                 healAmount: 50
             };
+            let rewardAdded = false;
             try {
                 this.rpgManager.addItem(potion);
+                rewardAdded = true;
             } catch {
-                this.onFeedback({ type: 'toast', text: '背包已满或物品重复', kind: 'warning' });
-                return true;
+                // 宝箱仍要推进关卡，但不能在奖励未加入背包时误报“获得药水”。
             }
             target.consumed = true;
             target.mesh.setEnabled(false);
+            this.progressManager?.recordChestOpened();
             this.audio.play('pickup');
-            this.onFeedback({ type: 'toast', text: '获得宝箱生命药水', kind: 'system' });
-            this.onFeedback({ type: 'float', text: '+药水', kind: 'xp' });
+            this.onFeedback({
+                type: 'toast',
+                text: rewardAdded ? '获得宝箱生命药水' : '补给箱已开启，背包中已有同类药水',
+                kind: rewardAdded ? 'system' : 'warning'
+            });
+            if (rewardAdded) {
+                this.onFeedback({ type: 'float', text: '+药水', kind: 'xp' });
+            }
             return true;
         }
 
@@ -198,7 +248,29 @@ export class InteractionManager {
             radius: gameConfig.world.interactRange,
             label: '开启宝箱',
             cooldownSeconds: 0,
-            consumed: false
+            consumed: this.progressManager?.progress.chestOpened ?? false
         });
+        if (this.progressManager?.progress.chestOpened) body.setEnabled(false);
+    }
+
+    private getCooldownSeconds(item: Interactable): number {
+        if (item.kind === 'shrine' && this.progressManager) {
+            return this.progressManager.shrineCooldownRemainingSeconds;
+        }
+        return item.cooldownSeconds;
+    }
+
+    private syncTrialState(): void {
+        if (!this.progressManager) return;
+        const trialNumber = this.progressManager.progress.trialNumber;
+        if (trialNumber === this.syncedTrialNumber) return;
+
+        this.syncedTrialNumber = trialNumber;
+        for (const item of this.interactables) {
+            if (item.kind !== 'chest') continue;
+            item.consumed = this.progressManager.progress.chestOpened;
+            item.mesh.setEnabled(!item.consumed);
+        }
+        this.nearest = null;
     }
 }

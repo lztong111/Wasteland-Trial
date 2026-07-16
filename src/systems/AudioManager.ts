@@ -9,7 +9,8 @@ export type SoundId =
     | 'heal'
     | 'levelup'
     | 'ui'
-    | 'pause';
+    | 'pause'
+    | 'dodge';
 
 interface ToneSpec {
     frequency: number;
@@ -28,7 +29,8 @@ const TONES: Record<SoundId, ToneSpec> = {
     heal: { frequency: 360, duration: 0.16, type: 'sine', gain: 0.06, slideTo: 540 },
     levelup: { frequency: 440, duration: 0.22, type: 'triangle', gain: 0.08, slideTo: 880 },
     ui: { frequency: 300, duration: 0.05, type: 'sine', gain: 0.04 },
-    pause: { frequency: 220, duration: 0.06, type: 'triangle', gain: 0.05, slideTo: 160 }
+    pause: { frequency: 220, duration: 0.06, type: 'triangle', gain: 0.05, slideTo: 160 },
+    dodge: { frequency: 260, duration: 0.1, type: 'triangle', gain: 0.055, slideTo: 110 }
 };
 
 /**

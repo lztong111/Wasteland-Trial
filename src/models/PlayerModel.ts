@@ -60,8 +60,20 @@ export class PlayerModel {
         this.meshes = this.meshState;
     }
 
-    public update(deltaSeconds: number, isMoving: boolean): void {
+    public update(deltaSeconds: number, isMoving: boolean, dodgeProgress: number | null = null): void {
         this.animationTime += deltaSeconds;
+        if (dodgeProgress !== null) {
+            const arc = Math.sin(Math.min(1, dodgeProgress) * Math.PI);
+            this.leftLeg.rotation.x = -1.05;
+            this.rightLeg.rotation.x = -1.05;
+            this.leftArm.rotation.x = -0.85;
+            this.rightArm.rotation.x = -0.85;
+            this.root.position.y = arc * 0.16;
+            this.root.rotation.x = -arc * 0.85;
+            this.root.rotation.z = 0;
+            this.updateGroundShadow();
+            return;
+        }
         const movementBlend = isMoving ? 1 : 0;
         const stride = Math.sin(this.animationTime * 10) * 0.58 * movementBlend;
         const idle = Math.sin(this.animationTime * 2.2);
@@ -71,7 +83,12 @@ export class PlayerModel {
         this.leftArm.rotation.x = -stride * 0.72 - 0.08;
         this.rightArm.rotation.x = stride * 0.72 - 0.08;
         this.root.position.y = (isMoving ? Math.abs(Math.sin(this.animationTime * 10)) * 0.055 : idle * 0.018);
+        this.root.rotation.x = 0;
         this.root.rotation.z = isMoving ? Math.sin(this.animationTime * 10) * 0.018 : idle * 0.008;
+        this.updateGroundShadow();
+    }
+
+    private updateGroundShadow(): void {
         const worldPosition = this.followTarget.getAbsolutePosition();
         this.groundShadow.position.x = worldPosition.x;
         this.groundShadow.position.z = worldPosition.z;

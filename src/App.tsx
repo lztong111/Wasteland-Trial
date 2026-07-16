@@ -4,6 +4,7 @@ import { GameUI } from './ui/GameUI';
 import { RPGManager } from './data/RPGManager';
 import { SaveManager } from './data/SaveManager';
 import { SettingsManager } from './data/SettingsManager';
+import { GameProgressManager } from './data/GameProgressManager';
 import type { CombatCooldownState, UiFeedback } from './ui/feedback';
 import type { InteractPrompt } from './systems/InteractionManager';
 import './App.css';
@@ -17,7 +18,8 @@ function App() {
     const gameRef = useRef<GameManager | null>(null);
     const feedbackSeqRef = useRef(0);
     const [rpgManager] = useState(() => new RPGManager());
-    const [saveManager] = useState(() => new SaveManager(rpgManager));
+    const [progressManager] = useState(() => new GameProgressManager());
+    const [saveManager] = useState(() => new SaveManager(rpgManager, undefined, progressManager));
     const [settingsManager] = useState(() => new SettingsManager());
     const [gameStatus, setGameStatus] = useState<GameStatus>('loading');
     const [errorMessage, setErrorMessage] = useState('');
@@ -40,6 +42,7 @@ function App() {
         saveManager.load();
         const unsubscribeStats = rpgManager.subscribeStats(() => saveManager.scheduleSave());
         const unsubscribeInventory = rpgManager.subscribeInventory(() => saveManager.scheduleSave());
+        const unsubscribeProgress = progressManager.subscribe(() => saveManager.scheduleSave());
         const handleBeforeUnload = () => saveManager.flush();
         window.addEventListener('beforeunload', handleBeforeUnload);
         setGameStatus('loading');
@@ -68,6 +71,7 @@ function App() {
                 game = new LoadedGameManager(
                     canvas,
                     rpgManager,
+                    progressManager,
                     settingsManager,
                     showCombatFeedback,
                     handleCooldownChange,
@@ -92,12 +96,13 @@ function App() {
             active = false;
             unsubscribeStats();
             unsubscribeInventory();
+            unsubscribeProgress();
             window.removeEventListener('beforeunload', handleBeforeUnload);
             game?.dispose();
             gameRef.current = null;
             saveManager.dispose();
         };
-    }, [rpgManager, saveManager, settingsManager]);
+    }, [rpgManager, progressManager, saveManager, settingsManager]);
 
     const copyError = async () => {
         try {
@@ -113,6 +118,7 @@ function App() {
             {gameStatus === 'ready' && (
                 <GameUI
                     rpgManager={rpgManager}
+                    progressManager={progressManager}
                     feedbackEvents={feedbackEvents}
                     cooldowns={cooldowns}
                     interactPrompt={interactPrompt}

@@ -31,6 +31,8 @@ export class EnemyModel {
     private readonly bodyMeshes: Mesh[] = [];
     private readonly materials: StandardMaterial[] = [];
     private animationTime: number;
+    private attackCharge = 0;
+    private readonly eyeMaterial: StandardMaterial;
 
     public constructor(
         name: string,
@@ -45,6 +47,7 @@ export class EnemyModel {
         this.visualRoot = new TransformNode(`${name}Visual`, scene);
         this.visualRoot.parent = this.root;
         const palette = this.createPalette(name, skinColor, scene);
+        this.eyeMaterial = palette.eye;
         this.healthMaterial = palette.health;
         this.createGroundShadow(name, palette, scene);
 
@@ -65,8 +68,24 @@ export class EnemyModel {
         this.visualRoot.position.y = Math.abs(pulse) * 0.045;
         this.visualRoot.scaling.y = 1 + pulse * 0.018;
         this.visualRoot.scaling.x = 1 - pulse * 0.012;
-        this.leftArm.rotation.x = stride;
-        this.rightArm.rotation.x = -stride;
+        if (this.attackCharge > 0) {
+            const raised = -0.35 - this.attackCharge * 1.15;
+            this.leftArm.rotation.x = raised;
+            this.rightArm.rotation.x = raised;
+            this.visualRoot.scaling.x += this.attackCharge * 0.055;
+        } else {
+            this.leftArm.rotation.x = stride;
+            this.rightArm.rotation.x = -stride;
+        }
+    }
+
+    public setAttackTelegraph(progress: number): void {
+        this.attackCharge = Math.max(0, Math.min(1, progress));
+        this.eyeMaterial.emissiveColor = Color3.Lerp(
+            new Color3(1, 0.14, 0.03),
+            new Color3(1, 0.85, 0.12),
+            this.attackCharge
+        );
     }
 
     public setHealthRatio(ratio: number): void {

@@ -1,4 +1,3 @@
-import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
@@ -35,6 +34,8 @@ interface MeleeEffect {
     remainingSeconds: number;
 }
 
+type MeleeAttackKind = 'light' | 'heavy';
+
 export type { CombatFeedbackHandler };
 
 const combatConfig = gameConfig.combat;
@@ -44,7 +45,11 @@ export class CombatManager {
     private readonly projectiles: Projectile[] = [];
     private readonly meleeEffects: MeleeEffect[] = [];
     private isAttacking = false;
+    private attackKind: MeleeAttackKind | null = null;
+    private comboStage = 0;
+    private queuedLightAttacks = 0;
     private meleeCooldownSeconds = 0;
+    private meleeCooldownDurationSeconds: number = combatConfig.meleeCooldownSeconds;
     private rangedCooldownSeconds = 0;
     private swingElapsedSeconds = 0;
     private hitChecked = false;
@@ -69,7 +74,7 @@ export class CombatManager {
         return {
             melee: combatConfig.meleeCooldownSeconds <= 0
                 ? 0
-                : this.meleeCooldownSeconds / combatConfig.meleeCooldownSeconds,
+                : Math.min(1, this.meleeCooldownSeconds / this.meleeCooldownDurationSeconds),
             ranged: combatConfig.rangedCooldownSeconds <= 0
                 ? 0
                 : this.rangedCooldownSeconds / combatConfig.rangedCooldownSeconds
@@ -77,29 +82,61 @@ export class CombatManager {
     }
 
     public triggerMeleeAttack(): void {
+        if (this.isAttacking) {
+            if (this.attackKind === 'light') {
+                const remainingStages = combatConfig.meleeComboDamageMultipliers.length
+                    - this.comboStage
+                    - this.queuedLightAttacks;
+                if (remainingStages > 0) this.queuedLightAttacks += 1;
+            }
+            return;
+        }
+        if (this.meleeCooldownSeconds > 0) return;
+        this.startLightAttack(1);
+    }
+
+    public triggerHeavyAttack(): void {
         if (this.isAttacking || this.meleeCooldownSeconds > 0) return;
-        if (!this.rpgManager.consumeStamina(combatConfig.meleeStaminaCost)) {
-            this.onFeedback(toast('体力不足', 'warning'));
+        if (!this.rpgManager.consumeStamina(combatConfig.heavyStaminaCost)) {
+            this.onFeedback(toast('体力不足，无法重击', 'warning'));
             return;
         }
 
+        this.beginMeleeAttack('heavy', 0);
+        this.onFeedback(toast('蓄力重击', 'combat'));
+    }
+
+    private startLightAttack(stage: number): boolean {
+        const cost = combatConfig.meleeComboStaminaCosts[stage - 1];
+        if (cost === undefined || !this.rpgManager.consumeStamina(cost)) {
+            this.onFeedback(toast('体力不足，连击中断', 'warning'));
+            return false;
+        }
+
+        this.beginMeleeAttack('light', stage);
+        this.onFeedback(toast(`轻击连段 ${stage} / 3`, 'combat'));
+        return true;
+    }
+
+    private beginMeleeAttack(kind: MeleeAttackKind, comboStage: number): void {
         this.isAttacking = true;
-        this.meleeCooldownSeconds = combatConfig.meleeCooldownSeconds;
+        this.attackKind = kind;
+        this.comboStage = comboStage;
         this.swingElapsedSeconds = 0;
         this.hitChecked = false;
         this.swingStartRotation = this.weaponModel.root.rotation.clone();
         this.weaponModel.setAttackGlow(1);
-        this.spawnMeleeEffect();
+        this.spawnMeleeEffect(kind === 'heavy' ? 1.35 : 1);
         this.audio?.play('melee');
-        this.onFeedback(toast('近战攻击', 'combat'));
     }
 
-    public triggerRangedAttack(camera: ArcRotateCamera): void {
+    public triggerRangedAttack(aimPoint: Vector3): void {
         if (this.rangedCooldownSeconds > 0) return;
         this.rangedCooldownSeconds = combatConfig.rangedCooldownSeconds;
         this.audio?.play('ranged');
 
-        const aimDirection = camera.getForwardRay().direction.normalize();
+        const playerPosition = this.player.mesh.getAbsolutePosition();
+        const aimDirection = aimPoint.subtract(playerPosition).normalize();
         const mesh = CreateSphere(
             'projectile',
             { diameter: combatConfig.projectileDiameter },
@@ -143,7 +180,7 @@ export class CombatManager {
         this.updateProjectiles(deltaSeconds);
         this.updateMeleeEffects(deltaSeconds);
 
-        if (!this.isAttacking) {
+        if (!this.isAttacking && !this.player.isDodging) {
             this.rpgManager.restoreStamina(combatConfig.staminaRegenPerSecond * deltaSeconds);
         }
     }
@@ -155,14 +192,22 @@ export class CombatManager {
     }
 
     private updateMeleeSwing(deltaSeconds: number): void {
-        if (!this.isAttacking) return;
+        if (!this.isAttacking || !this.attackKind) return;
 
         this.swingElapsedSeconds += deltaSeconds;
-        const progress = Math.min(this.swingElapsedSeconds / combatConfig.meleeSwingSeconds, 1);
+        const duration = this.attackKind === 'heavy'
+            ? combatConfig.heavySwingSeconds
+            : combatConfig.meleeComboSwingSeconds[this.comboStage - 1];
+        const progress = Math.min(this.swingElapsedSeconds / duration, 1);
         const swingProgress = progress <= 0.5 ? progress * 2 : (1 - progress) * 2;
-        this.weaponModel.root.rotation.z = this.swingStartRotation.z - Math.PI * 1.18 * swingProgress;
-        this.weaponModel.root.rotation.x = this.swingStartRotation.x + 0.38 * swingProgress;
-        const scale = 1 + Math.sin(progress * Math.PI) * 0.3;
+        const swingPower = this.attackKind === 'heavy'
+            ? 1.55
+            : 1 + (this.comboStage - 1) * 0.12;
+        this.weaponModel.root.rotation.z = this.swingStartRotation.z
+            - Math.PI * 1.18 * swingProgress * swingPower;
+        this.weaponModel.root.rotation.x = this.swingStartRotation.x
+            + 0.38 * swingProgress * swingPower;
+        const scale = 1 + Math.sin(progress * Math.PI) * (this.attackKind === 'heavy' ? 0.48 : 0.3);
         this.weaponModel.setScale(scale);
 
         if (!this.hitChecked && progress >= 0.5) {
@@ -174,8 +219,26 @@ export class CombatManager {
             this.weaponModel.root.rotation.copyFrom(this.swingStartRotation);
             this.weaponModel.setScale(1);
             this.weaponModel.setAttackGlow(0);
-            this.isAttacking = false;
+            if (this.attackKind === 'light'
+                && this.queuedLightAttacks > 0
+                && this.comboStage < combatConfig.meleeComboDamageMultipliers.length) {
+                this.queuedLightAttacks -= 1;
+                if (this.startLightAttack(this.comboStage + 1)) return;
+            }
+            this.finishMeleeAttack();
         }
+    }
+
+    private finishMeleeAttack(): void {
+        const cooldown = this.attackKind === 'heavy'
+            ? combatConfig.heavyCooldownSeconds
+            : combatConfig.meleeCooldownSeconds;
+        this.isAttacking = false;
+        this.attackKind = null;
+        this.comboStage = 0;
+        this.queuedLightAttacks = 0;
+        this.meleeCooldownSeconds = cooldown;
+        this.meleeCooldownDurationSeconds = cooldown;
     }
 
     private updateProjectiles(deltaSeconds: number): void {
@@ -202,25 +265,31 @@ export class CombatManager {
     private checkMeleeHit(): void {
         const playerPosition = this.player.mesh.getAbsolutePosition();
         const forward = this.player.getForwardDirection();
-        const hitCenter = playerPosition.add(forward.scale(1.4));
-        const damage = this.rpgManager.getTotalDamage();
-        const hitCount = this.enemyManager.damageEnemiesInRadius(
-            hitCenter,
-            combatConfig.meleeRange,
+        const heavy = this.attackKind === 'heavy';
+        const multiplier = heavy
+            ? combatConfig.heavyDamageMultiplier
+            : combatConfig.meleeComboDamageMultipliers[this.comboStage - 1];
+        const damage = this.rpgManager.getTotalDamage() * multiplier;
+        const hitCount = this.enemyManager.damageEnemiesInCone(
+            playerPosition,
+            forward,
+            heavy ? combatConfig.heavyRange : combatConfig.meleeRange,
+            (heavy ? combatConfig.heavyHalfAngleDegrees : combatConfig.meleeHalfAngleDegrees)
+                * Math.PI / 180,
             damage
         );
         if (hitCount > 0) {
             this.audio?.play('hit');
-            this.onFeedback(toast(`近战命中 ×${hitCount}`, 'hit'));
+            this.onFeedback(toast(heavy ? '重击命中' : `连击 ${this.comboStage} 命中`, 'hit'));
             this.onFeedback({ type: 'float', text: `-${damage * hitCount}`, kind: 'damage' });
         }
     }
 
-    private spawnMeleeEffect(): void {
+    private spawnMeleeEffect(scale: number): void {
         const forward = this.player.getForwardDirection();
         const mesh = CreateTorus(
             'meleeEffect',
-            { diameter: 2.4, thickness: 0.09, tessellation: 40 },
+            { diameter: 2.4 * scale, thickness: 0.09 * scale, tessellation: 40 },
             this.scene
         );
         mesh.position = this.player.mesh.getAbsolutePosition()

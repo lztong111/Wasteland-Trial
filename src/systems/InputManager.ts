@@ -6,7 +6,9 @@ export enum Action {
     JUMP,
     ATTACK_MELEE,
     ATTACK_RANGED,
-    INTERACT
+    INTERACT,
+    DODGE,
+    ATTACK_HEAVY
 }
 
 export class InputManager {
@@ -58,7 +60,9 @@ export class InputManager {
     private readonly handleKeyDown = (event: KeyboardEvent): void => {
         const action = this.getKeyboardAction(event.code);
         if (action === null) return;
-        if (event.code === 'Space') event.preventDefault();
+        if (event.code === 'Space' || event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+            event.preventDefault();
+        }
         this.setAction(action, true);
     };
 
@@ -97,7 +101,10 @@ export class InputManager {
             KeyA: Action.LEFT,
             KeyD: Action.RIGHT,
             Space: Action.JUMP,
-            KeyE: Action.INTERACT
+            KeyE: Action.INTERACT,
+            KeyQ: Action.ATTACK_HEAVY,
+            ShiftLeft: Action.DODGE,
+            ShiftRight: Action.DODGE
         };
         return actionByCode[code] ?? null;
     }

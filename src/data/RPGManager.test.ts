@@ -56,6 +56,19 @@ describe('RPGManager', () => {
         expect(manager.stats.hp).toBe(70);
     });
 
+    it('可以授予闪避无敌且不会缩短已有保护时间', () => {
+        const manager = new RPGManager();
+
+        manager.grantInvulnerability(0.4);
+        manager.grantInvulnerability(0.1);
+        expect(manager.invulnerabilityRemaining).toBe(0.4);
+        expect(manager.takeDamage(20)).toBe(false);
+
+        manager.update(0.4);
+        expect(manager.isInvulnerable).toBe(false);
+        expect(() => manager.grantInvulnerability(Number.NaN)).toThrow(RangeError);
+    });
+
     it('可以使用消耗品恢复生命并移除物品', () => {
         const manager = new RPGManager();
         manager.takeDamage(40);

@@ -8,6 +8,7 @@ import { gameConfig } from '../config/gameConfig';
 import { EnemyModel } from '../models/EnemyModel';
 import type { CombatFeedbackHandler } from '../ui/feedback';
 import type { AudioManager } from './AudioManager';
+import type { GamePhase, GameProgressManager } from '../data/GameProgressManager';
 
 interface SpawnSlot {
     index: number;
@@ -19,8 +20,12 @@ interface Enemy {
     slotIndex: number;
     model: EnemyModel;
     hp: number;
+    maxHp: number;
+    attackDamage: number;
+    xpReward: number;
     attackCooldownSeconds: number;
     hitFlashSeconds: number;
+    windupSeconds: number;
 }
 
 interface PendingRespawn {
@@ -42,19 +47,22 @@ export class EnemyManager {
     private readonly pendingRespawns: PendingRespawn[] = [];
     private readonly slots: SpawnSlot[];
     private spawnSerial = 0;
+    private spawnedWavePhase: GamePhase | null = null;
 
     public constructor(
         private readonly scene: Scene,
         private readonly rpgManager: RPGManager,
         private readonly player: Player,
         private readonly onFeedback: CombatFeedbackHandler = () => undefined,
-        private readonly audio: AudioManager | null = null
+        private readonly audio: AudioManager | null = null,
+        private readonly progressManager: GameProgressManager | null = null
     ) {
         this.slots = worldConfig.enemySpawnPoints.map((position, index) => ({
             index,
             position: new Vector3(...position)
         }));
-        this.slots.forEach(slot => this.spawnEnemy(slot));
+        if (this.progressManager) this.syncProgressWave();
+        else this.slots.forEach(slot => this.spawnEnemy(slot));
     }
 
     public get renderableMeshes(): readonly Mesh[] {
@@ -62,6 +70,7 @@ export class EnemyManager {
     }
 
     public update(deltaSeconds: number): void {
+        this.syncProgressWave();
         this.updateRespawns(deltaSeconds);
 
         for (const enemy of this.enemies) {
@@ -77,20 +86,33 @@ export class EnemyManager {
             toPlayer.y = 0;
             const distance = toPlayer.length();
 
-            if (distance > enemyConfig.attackRange) {
+            if (enemy.windupSeconds > 0) {
+                enemy.windupSeconds = Math.max(0, enemy.windupSeconds - deltaSeconds);
+                const progress = 1 - enemy.windupSeconds / enemyConfig.attackWindupSeconds;
+                enemy.model.setAttackTelegraph(progress);
+                if (distance > enemyConfig.attackRange + enemyConfig.attackCancelMargin) {
+                    enemy.windupSeconds = 0;
+                    enemy.model.setAttackTelegraph(0);
+                    enemy.attackCooldownSeconds = enemyConfig.attackCooldownSeconds * 0.5;
+                } else if (enemy.windupSeconds === 0) {
+                    enemy.model.setAttackTelegraph(0);
+                    const applied = this.rpgManager.takeDamage(enemy.attackDamage);
+                    enemy.attackCooldownSeconds = enemyConfig.attackCooldownSeconds;
+                    if (applied) {
+                        this.player.applyKnockback(toPlayer.normalize());
+                        this.audio?.play('hurt');
+                        this.onFeedback({ type: 'toast', text: '受到攻击', kind: 'warning' });
+                    }
+                }
+            } else if (distance > enemyConfig.attackRange) {
                 const moveDir = this.computeAvoidanceDirection(enemy, toPlayer, distance);
                 enemy.model.root.position.addInPlace(
                     moveDir.scale(enemyConfig.speed * deltaSeconds)
                 );
                 enemy.model.root.rotation.y = Math.atan2(moveDir.x, moveDir.z);
             } else if (enemy.attackCooldownSeconds === 0) {
-                const applied = this.rpgManager.takeDamage(enemyConfig.attackDamage);
-                enemy.attackCooldownSeconds = enemyConfig.attackCooldownSeconds;
-                if (applied) {
-                    this.player.applyKnockback(toPlayer.normalize());
-                    this.audio?.play('hurt');
-                    this.onFeedback({ type: 'toast', text: '受到攻击', kind: 'warning' });
-                }
+                enemy.windupSeconds = enemyConfig.attackWindupSeconds;
+                enemy.model.setAttackTelegraph(0.01);
             }
             enemy.model.update(deltaSeconds, distance > enemyConfig.attackRange);
         }
@@ -104,6 +126,30 @@ export class EnemyManager {
                 this.damageEnemy(index, damage);
                 hitCount += 1;
             }
+        }
+        return hitCount;
+    }
+
+    public damageEnemiesInCone(
+        origin: Vector3,
+        forward: Vector3,
+        range: number,
+        halfAngleRadians: number,
+        damage: number
+    ): number {
+        const horizontalForward = new Vector3(forward.x, 0, forward.z).normalize();
+        const minimumDot = Math.cos(halfAngleRadians);
+        let hitCount = 0;
+        for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
+            const enemy = this.enemies[index];
+            const offset = enemy.model.root.position.subtract(origin);
+            offset.y = 0;
+            const distance = offset.length();
+            if (distance <= 0.001 || distance > range) continue;
+            if (Vector3.Dot(horizontalForward, offset.scale(1 / distance)) < minimumDot) continue;
+            if (this.isLineOfSightBlocked(origin, enemy.model.root.position, distance)) continue;
+            this.damageEnemy(index, damage);
+            hitCount += 1;
         }
         return hitCount;
     }
@@ -131,6 +177,10 @@ export class EnemyManager {
     }
 
     private updateRespawns(deltaSeconds: number): void {
+        if (this.progressManager && !this.progressManager.shouldSpawnGuardians) {
+            this.pendingRespawns.length = 0;
+            return;
+        }
         for (let index = this.pendingRespawns.length - 1; index >= 0; index -= 1) {
             const pending = this.pendingRespawns[index];
             pending.remainingSeconds -= deltaSeconds;
@@ -141,9 +191,38 @@ export class EnemyManager {
         }
     }
 
+    private syncProgressWave(): void {
+        if (!this.progressManager || !this.progressManager.shouldSpawnGuardians) return;
+        const phase = this.progressManager.progress.phase;
+        if (this.spawnedWavePhase === phase) return;
+
+        // 波次由关卡阶段驱动，保证开箱后和读档进入第二波时都会补齐应有敌人。
+        this.spawnedWavePhase = phase;
+        const remaining = this.progressManager.guardiansRemainingInCurrentWave;
+        this.slots.slice(0, remaining).forEach(slot => this.spawnEnemy(slot));
+        if (phase === 'reinforcements') {
+            this.audio?.play('ranged');
+            this.onFeedback({ type: 'toast', text: '第二波守卫来袭', kind: 'warning' });
+        }
+    }
+
     private spawnEnemy(slot: SpawnSlot): void {
         this.spawnSerial += 1;
         const id = `enemy_${slot.index + 1}_${this.spawnSerial}`;
+        const completedTrials = Math.max(
+            0,
+            (this.progressManager?.progress.trialNumber ?? 1) - 1
+        );
+        const maxHp = Math.round(
+            enemyConfig.maxHp * (1 + completedTrials * enemyConfig.trialHealthGrowthPerRound)
+        );
+        const attackDamage = Math.round(
+            enemyConfig.attackDamage
+                * (1 + completedTrials * enemyConfig.trialDamageGrowthPerRound)
+        );
+        const xpReward = Math.round(
+            enemyConfig.xpReward * (1 + completedTrials * enemyConfig.trialXpGrowthPerRound)
+        );
         const model = new EnemyModel(
             id,
             slot.position.clone(),
@@ -155,9 +234,13 @@ export class EnemyManager {
             id,
             slotIndex: slot.index,
             model,
-            hp: enemyConfig.maxHp,
+            hp: maxHp,
+            maxHp,
+            attackDamage,
+            xpReward,
             attackCooldownSeconds: 0,
-            hitFlashSeconds: 0
+            hitFlashSeconds: 0,
+            windupSeconds: 0
         });
     }
 
@@ -167,18 +250,19 @@ export class EnemyManager {
         enemy.hp = Math.max(0, enemy.hp - damage);
         enemy.hitFlashSeconds = 0.14;
         enemy.model.setHitFlash(true);
-        enemy.model.setHealthRatio(enemy.hp / enemyConfig.maxHp);
+        enemy.model.setHealthRatio(enemy.hp / enemy.maxHp);
         if (enemy.hp > 0) return;
 
         const slot = this.slots.find(candidate => candidate.index === enemy.slotIndex);
         enemy.model.dispose();
         this.enemies.splice(index, 1);
-        this.rpgManager.addXP(enemyConfig.xpReward);
+        this.rpgManager.addXP(enemy.xpReward);
+        this.progressManager?.recordGuardianDefeated();
         this.audio?.play('hit');
-        this.onFeedback({ type: 'float', text: `+${enemyConfig.xpReward} XP`, kind: 'xp' });
+        this.onFeedback({ type: 'float', text: `+${enemy.xpReward} XP`, kind: 'xp' });
         this.onFeedback({ type: 'toast', text: '击败敌人', kind: 'system' });
 
-        if (slot) {
+        if (slot && !this.progressManager) {
             this.pendingRespawns.push({
                 slot,
                 remainingSeconds: worldConfig.enemyRespawnDelaySeconds
@@ -253,5 +337,16 @@ export class EnemyManager {
         if (!engine) return false;
         const hit = engine.raycast(from, to);
         return Boolean(hit?.hasHit);
+    }
+
+    private isLineOfSightBlocked(from: Vector3, to: Vector3, distance: number): boolean {
+        const engine = this.scene.getPhysicsEngine();
+        if (!engine) return false;
+        const start = from.add(new Vector3(0, 0.8, 0));
+        const end = to.add(new Vector3(0, 0.8, 0));
+        const hit = engine.raycast(start, end, {
+            ignoreBody: this.player.physicsBody ?? undefined
+        });
+        return Boolean(hit?.hasHit && hit.hitDistance < distance - 0.15);
     }
 }

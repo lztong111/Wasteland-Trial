@@ -8,6 +8,7 @@ import { Action, InputManager } from '../systems/InputManager';
 import { Player } from '../entities/Player';
 import { RPGManager } from '../data/RPGManager';
 import type { SettingsManager } from '../data/SettingsManager';
+import type { GameProgressManager } from '../data/GameProgressManager';
 import { CombatManager } from '../systems/CombatManager';
 import { EnemyManager } from '../systems/EnemyManager';
 import { InteractionManager } from '../systems/InteractionManager';
@@ -29,6 +30,7 @@ export class GameManager {
     private environment: EnvironmentModel | null = null;
     private audio: AudioManager | null = null;
     private frameObserver: Observer<Scene> | null = null;
+    private unsubscribeSettings: (() => void) | null = null;
     private started = false;
     private disposed = false;
     private paused = false;
@@ -37,6 +39,7 @@ export class GameManager {
     public constructor(
         private readonly canvas: HTMLCanvasElement,
         private readonly rpgManager: RPGManager,
+        private readonly progressManager: GameProgressManager,
         private readonly settingsManager: SettingsManager,
         private readonly onCombatFeedback: CombatFeedbackHandler = () => undefined,
         private readonly onCooldownChange: (state: CombatCooldownState) => void = () => undefined,
@@ -60,7 +63,7 @@ export class GameManager {
         if (this.disposed) return;
 
         this.audio = new AudioManager(this.settingsManager.settings);
-        this.settingsManager.subscribe(() => {
+        this.unsubscribeSettings = this.settingsManager.subscribe(() => {
             this.audio?.setSettings(this.settingsManager.settings);
         });
 
@@ -72,7 +75,8 @@ export class GameManager {
             this.rpgManager,
             this.player,
             this.onCombatFeedback,
-            this.audio
+            this.audio,
+            this.progressManager
         );
         this.combatManager = new CombatManager(
             this.scene,
@@ -87,7 +91,8 @@ export class GameManager {
             this.rpgManager,
             this.player,
             this.onCombatFeedback,
-            this.audio
+            this.audio,
+            this.progressManager
         );
         this.setupThirdPersonCamera();
         this.frameObserver = this.scene.onBeforeRenderObservable.add(this.handleBeforeRender);
@@ -144,6 +149,8 @@ export class GameManager {
         this.player?.dispose();
         this.environment?.dispose();
         this.inputManager?.dispose();
+        this.unsubscribeSettings?.();
+        this.unsubscribeSettings = null;
         this.audio?.dispose();
         this.scene.dispose();
         this.engine.dispose();
@@ -239,7 +246,14 @@ export class GameManager {
     private applyCameraCollision(): void {
         if (!this.camera || !this.player) return;
 
-        const target = this.player.mesh.position.add(new Vector3(0, 1, 0));
+        const viewForward = this.camera.getForwardRay().direction.clone();
+        viewForward.y = 0;
+        if (viewForward.lengthSquared() < 0.0001) viewForward.z = 1;
+        viewForward.normalize();
+        const cameraRight = Vector3.Cross(Vector3.Up(), viewForward).normalize();
+        const target = this.player.mesh.position
+            .add(new Vector3(0, gameConfig.camera.targetHeight, 0))
+            .add(cameraRight.scale(gameConfig.camera.shoulderOffset));
         this.camera.setTarget(target);
         // 先放到期望距离，再沿目标→镜头射线检测遮挡并回缩。
         this.camera.radius = this.desiredCameraRadius;
@@ -259,6 +273,18 @@ export class GameManager {
             gameConfig.camera.minCollisionRadius,
             Math.min(this.desiredCameraRadius, hitDistance)
         );
+    }
+
+    private getAimPoint(): Vector3 {
+        if (!this.camera) return Vector3.Zero();
+        const ray = this.camera.getForwardRay(gameConfig.camera.aimDistance);
+        const engine = this.scene.getPhysicsEngine();
+        if (!engine) return ray.origin.add(ray.direction.scale(gameConfig.camera.aimDistance));
+        const end = ray.origin.add(ray.direction.scale(gameConfig.camera.aimDistance));
+        const hit = engine.raycast(ray.origin, end, {
+            ignoreBody: this.player?.physicsBody ?? undefined
+        });
+        return hit?.hasHit ? hit.hitPointWorld.clone() : end;
     }
 
     private readonly handleBeforeRender = (): void => {
@@ -286,13 +312,36 @@ export class GameManager {
         this.applyCameraCollision();
 
         if (canControl && this.inputManager) {
-            if (this.inputManager.consumePress(Action.ATTACK_MELEE)) {
-                this.combatManager.triggerMeleeAttack();
+            if (this.inputManager.consumePress(Action.DODGE) && this.player.canStartDodge) {
+                if (!this.rpgManager.consumeStamina(gameConfig.player.dodgeStaminaCost)) {
+                    this.onCombatFeedback({ type: 'toast', text: '体力不足，无法闪避', kind: 'warning' });
+                } else if (this.player.startDodge(this.camera)) {
+                    this.rpgManager.grantInvulnerability(
+                        gameConfig.player.dodgeInvulnerabilitySeconds
+                    );
+                    this.audio?.play('dodge');
+                    this.onCombatFeedback({ type: 'toast', text: '闪避', kind: 'combat' });
+                }
             }
-            if (this.inputManager.consumePress(Action.ATTACK_RANGED)) {
-                this.combatManager.triggerRangedAttack(this.camera);
+
+            if (this.player.isDodging) {
+                // 闪避中清除一次性操作，避免动作结束后补触发旧输入。
+                this.inputManager.consumePress(Action.ATTACK_MELEE);
+                this.inputManager.consumePress(Action.ATTACK_RANGED);
+                this.inputManager.consumePress(Action.ATTACK_HEAVY);
+                this.inputManager.consumePress(Action.INTERACT);
+            } else {
+                if (this.inputManager.consumePress(Action.ATTACK_MELEE)) {
+                    this.combatManager.triggerMeleeAttack();
+                }
+                if (this.inputManager.consumePress(Action.ATTACK_RANGED)) {
+                    this.combatManager.triggerRangedAttack(this.getAimPoint());
+                }
+                if (this.inputManager.consumePress(Action.ATTACK_HEAVY)) {
+                    this.combatManager.triggerHeavyAttack();
+                }
             }
-            if (this.inputManager.consumePress(Action.INTERACT)) {
+            if (!this.player.isDodging && this.inputManager.consumePress(Action.INTERACT)) {
                 const interacted = this.interactionManager.tryInteract();
                 if (!interacted && import.meta.env.DEV) {
                     // 开发模式：附近无可交互物时仍可用 E 加测试经验。
