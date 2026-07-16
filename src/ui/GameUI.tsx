@@ -17,7 +17,10 @@ import { StatsPanel } from './components/StatsPanel';
 import { ObjectiveTracker } from './components/ObjectiveTracker';
 import { VictoryOverlay } from './components/VictoryOverlay';
 import { WelcomeOverlay } from './components/WelcomeOverlay';
+import { MobileControls } from './components/MobileControls';
+import type { Action } from '../systems/InputManager';
 import type { GameProgressManager, ObjectiveView } from '../data/GameProgressManager';
+import { trialUpgradeChoices, type TrialUpgradeId } from '../data/TrialUpgrades';
 import './GameUI.css';
 
 interface UIProps {
@@ -33,6 +36,7 @@ interface UIProps {
     onPlayHealSound: () => void;
     onPlayLevelUpSound: () => void;
     onPlayUiSound: () => void;
+    onVirtualAction: (action: Action, isDown: boolean) => void;
 }
 
 interface ToastState {
@@ -52,7 +56,8 @@ export const GameUI: FC<UIProps> = ({
     onSettingsChange,
     onPlayHealSound,
     onPlayLevelUpSound,
-    onPlayUiSound
+    onPlayUiSound,
+    onVirtualAction
 }) => {
     const [stats, setStats] = useState<Readonly<Stats>>(rpgManager.stats);
     const [inventory, setInventory] = useState<readonly Readonly<Item>[]>(rpgManager.inventory);
@@ -239,6 +244,7 @@ export const GameUI: FC<UIProps> = ({
 
             <CooldownHud cooldowns={cooldowns} />
             <ControlsHint forceExpanded={showInventory || paused} />
+            <MobileControls onAction={onVirtualAction} />
 
             {stats.hp === 0 && !paused && (
                 <DeathOverlay level={stats.level} onRevive={() => rpgManager.revive()} />
@@ -258,6 +264,7 @@ export const GameUI: FC<UIProps> = ({
                 <PauseMenu
                     settings={settings}
                     onResume={() => onPauseChange(false)}
+                    onShowWelcome={() => setShowWelcome(true)}
                     onChange={onSettingsChange}
                 />
             )}
@@ -267,6 +274,14 @@ export const GameUI: FC<UIProps> = ({
                     level={stats.level}
                     trialNumber={progress.trialNumber}
                     defeatedGuardians={progress.defeatedGuardians}
+                    upgrades={trialUpgradeChoices}
+                    selectedUpgradeId={progress.selectedUpgradeId}
+                    onSelectUpgrade={(upgradeId: TrialUpgradeId) => {
+                        if (progress.upgradeSelected) return;
+                        rpgManager.applyTrialUpgrade(upgradeId);
+                        progressManager.selectUpgrade(upgradeId);
+                        onPlayLevelUpSound();
+                    }}
                     onContinue={() => progressManager.startNextTrial()}
                 />
             )}

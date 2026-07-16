@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GameManager } from './core/Game';
+import type { GameLoadingState, GameManager } from './core/Game';
 import { GameUI } from './ui/GameUI';
 import { RPGManager } from './data/RPGManager';
 import { SaveManager } from './data/SaveManager';
@@ -22,6 +22,10 @@ function App() {
     const [saveManager] = useState(() => new SaveManager(rpgManager, undefined, progressManager));
     const [settingsManager] = useState(() => new SettingsManager());
     const [gameStatus, setGameStatus] = useState<GameStatus>('loading');
+    const [loadingState, setLoadingState] = useState<GameLoadingState>({
+        stage: 'physics',
+        progress: null
+    });
     const [errorMessage, setErrorMessage] = useState('');
     const [feedbackEvents, setFeedbackEvents] = useState<Array<{ id: number; feedback: UiFeedback }>>([]);
     const [cooldowns, setCooldowns] = useState<CombatCooldownState>(EMPTY_COOLDOWNS);
@@ -80,6 +84,9 @@ function App() {
                     },
                     nextPaused => {
                         if (active) setPaused(nextPaused);
+                    },
+                    nextLoading => {
+                        if (active) setLoadingState(nextLoading);
                     }
                 );
                 gameRef.current = game;
@@ -129,14 +136,33 @@ function App() {
                     onPlayHealSound={() => gameRef.current?.playHealSound()}
                     onPlayLevelUpSound={() => gameRef.current?.playLevelUpSound()}
                     onPlayUiSound={() => gameRef.current?.playUiSound()}
+                    onVirtualAction={(action, isDown) => gameRef.current?.setVirtualAction(action, isDown)}
                 />
             )}
             {gameStatus === 'loading' && (
                 <div className="status-panel" role="status" aria-live="polite">
                     <div className="status-panel__card">
                         <div className="status-spinner" aria-hidden="true" />
-                        <strong>正在加载物理引擎</strong>
-                        <span className="status-panel__hint">Havok · Babylon.js</span>
+                        <strong>
+                            {loadingState.stage === 'physics'
+                                ? '正在加载物理引擎'
+                                : loadingState.stage === 'player-model'
+                                    ? '正在加载角色模型'
+                                    : '正在创建试炼场景'}
+                        </strong>
+                        <span className="status-panel__hint">
+                            {loadingState.stage === 'player-model' && loadingState.progress !== null
+                                ? `${Math.round(loadingState.progress * 100)}% · GLB / 骨骼动画`
+                                : 'Havok · Babylon.js'}
+                        </span>
+                        {loadingState.stage === 'player-model' && loadingState.progress !== null && (
+                            <div className="status-progress" aria-label="角色模型加载进度">
+                                <div
+                                    className="status-progress__fill"
+                                    style={{ transform: `scaleX(${loadingState.progress})` }}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

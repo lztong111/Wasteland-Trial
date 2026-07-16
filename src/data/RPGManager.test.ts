@@ -203,4 +203,21 @@ describe('RPGManager', () => {
         expect(manager.equippedWeapon).toBeNull();
         expect(manager.getTotalDamage()).toBe(manager.stats.baseDamage);
     });
+
+    it('应用三类试炼升级并拒绝非法选项', () => {
+        const vitality = new RPGManager();
+        vitality.takeDamage(20);
+        vitality.applyTrialUpgrade('vitality');
+        expect(vitality.stats).toMatchObject({ maxHp: 120, hp: 100 });
+
+        const power = new RPGManager();
+        power.applyTrialUpgrade('power');
+        expect(power.stats.baseDamage).toBe(14);
+
+        const endurance = new RPGManager();
+        endurance.consumeStamina(30);
+        endurance.applyTrialUpgrade('endurance');
+        expect(endurance.stats).toMatchObject({ maxStamina: 120, stamina: 90 });
+        expect(() => endurance.applyTrialUpgrade('invalid' as never)).toThrow(TypeError);
+    });
 });

@@ -76,6 +76,7 @@ describe('InteractionManager', () => {
                 scenario.progressManager.recordGuardianDefeated();
             }
             scenario.progressManager.recordShrineActivated(0);
+            scenario.progressManager.selectUpgrade('power');
             scenario.progressManager.startNextTrial();
             scenario.manager.update(0);
             expect(scenario.manager.getPrompt()?.label).toContain('补给箱被封印');

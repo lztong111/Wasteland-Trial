@@ -44,4 +44,16 @@ describe('游戏规则配置', () => {
         expect(gameConfig.enemy.maxHp).toBe(40);
         expect(gameConfig.enemy.maxHp / (4 / 3)).toBe(30);
     });
+
+    it('敌人原型和掉落概率均在边界内配置', () => {
+        expect(gameConfig.enemy.archetypes.grunt.healthMultiplier).toBe(1);
+        expect(gameConfig.enemy.archetypes.brute.healthMultiplier)
+            .toBeGreaterThan(gameConfig.enemy.archetypes.grunt.healthMultiplier);
+        expect(gameConfig.enemy.archetypes.boss.dropChance).toBe(1);
+        for (const archetype of Object.values(gameConfig.enemy.archetypes)) {
+            expect(archetype.dropChance).toBeGreaterThanOrEqual(0);
+            expect(archetype.dropChance).toBeLessThanOrEqual(1);
+            expect(archetype.modelScale).toBeGreaterThan(0);
+        }
+    });
 });

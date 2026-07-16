@@ -100,6 +100,7 @@ describe('EnemyManager', () => {
         expect(progress.progress.defeatedGuardians).toBe(6);
 
         progress.recordShrineActivated(0);
+        progress.selectUpgrade('power');
         progress.startNextTrial();
         manager.update(0);
         expect(progress.progress.trialNumber).toBe(2);
@@ -108,6 +109,32 @@ describe('EnemyManager', () => {
         expect(progress.progress.defeatedGuardians).toBe(0);
         expect(manager.damageEnemiesInRadius(new Vector3(6, 1, 6), 0.5, 100)).toBe(1);
         expect(progress.progress.defeatedGuardians).toBe(1);
+        manager.dispose();
+    });
+
+    it('第二波包含重装守卫和小首领，小首领必定掉落武器', () => {
+        engine = new NullEngine();
+        scene = new Scene(engine);
+        const playerStub = {
+            mesh: { getAbsolutePosition: () => Vector3.Zero() },
+            physicsBody: null
+        } as unknown as Player;
+        const progress = new GameProgressManager();
+        const rpg = new RPGManager();
+        const manager = new EnemyManager(scene, rpg, playerStub, undefined, null, progress);
+
+        for (const position of [[6, 1, 6], [-7, 1, 4], [4, 1, -8]] as const) {
+            manager.damageEnemiesInRadius(new Vector3(...position), 0.5, 100);
+        }
+        progress.recordChestOpened();
+        manager.update(0);
+
+        expect(manager.activeEnemyArchetypes).toEqual(['brute', 'brute', 'boss']);
+        manager.damageEnemiesInRadius(new Vector3(6, 1, 6), 0.5, 100);
+        manager.damageEnemiesInRadius(new Vector3(-7, 1, 4), 0.5, 100);
+        manager.damageEnemiesInRadius(new Vector3(4, 1, -8), 0.5, 100);
+
+        expect(rpg.inventory.some(item => item.id.startsWith('wpn_boss_'))).toBe(true);
         manager.dispose();
     });
 });

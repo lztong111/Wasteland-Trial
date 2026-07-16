@@ -4,10 +4,11 @@ import { gameConfig } from '../../config/gameConfig';
 interface PauseMenuProps {
     settings: Readonly<GameSettings>;
     onResume: () => void;
+    onShowWelcome: () => void;
     onChange: (partial: Partial<GameSettings>) => void;
 }
 
-export function PauseMenu({ settings, onResume, onChange }: PauseMenuProps) {
+export function PauseMenu({ settings, onResume, onShowWelcome, onChange }: PauseMenuProps) {
     const sensitivityPercent = Math.round(
         ((settings.mouseSensitivity - gameConfig.settings.minMouseSensitivity)
             / (gameConfig.settings.maxMouseSensitivity - gameConfig.settings.minMouseSensitivity))
@@ -69,6 +70,9 @@ export function PauseMenu({ settings, onResume, onChange }: PauseMenuProps) {
 
                 <button type="button" className="pause-resume" onClick={onResume}>
                     继续游戏
+                </button>
+                <button type="button" className="button-secondary pause-help" onClick={onShowWelcome}>
+                    重新查看玩法
                 </button>
             </div>
         </div>

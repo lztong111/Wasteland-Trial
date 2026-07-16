@@ -60,7 +60,10 @@ export const gameConfig = {
         },
         xpGrowthMultiplier: 1.5,
         hpPerLevel: 20,
-        damagePerLevel: 2
+        damagePerLevel: 2,
+        trialUpgradeHp: 20,
+        trialUpgradeDamage: 4,
+        trialUpgradeStamina: 20
     },
     combat: {
         meleeComboStaminaCosts: [10, 10, 15] as const,
@@ -99,7 +102,33 @@ export const gameConfig = {
         radius: 0.55,
         avoidLookAhead: 1.1,
         avoidSteerStrength: 1.35,
-        separationDistance: 1.35
+        separationDistance: 1.35,
+        archetypes: {
+            grunt: {
+                healthMultiplier: 1,
+                damageMultiplier: 1,
+                speedMultiplier: 1,
+                xpMultiplier: 1,
+                modelScale: 1,
+                dropChance: 0
+            },
+            brute: {
+                healthMultiplier: 1.55,
+                damageMultiplier: 1.25,
+                speedMultiplier: 0.72,
+                xpMultiplier: 1.45,
+                modelScale: 1.18,
+                dropChance: 0.35
+            },
+            boss: {
+                healthMultiplier: 2.4,
+                damageMultiplier: 1.55,
+                speedMultiplier: 0.62,
+                xpMultiplier: 2.5,
+                modelScale: 1.42,
+                dropChance: 1
+            }
+        }
     },
     save: {
         version: 3,
@@ -117,5 +146,8 @@ export const gameConfig = {
     },
     audio: {
         enabledByDefault: true
+    },
+    assets: {
+        playerModel: null as { rootUrl: string; fileName: string } | null
     }
 } as const;

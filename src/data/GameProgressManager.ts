@@ -1,4 +1,5 @@
 import { gameConfig } from '../config/gameConfig';
+import { isTrialUpgradeId, type TrialUpgradeId } from './TrialUpgrades';
 
 export type GamePhase = 'guardians' | 'chest' | 'reinforcements' | 'shrine' | 'victory';
 
@@ -10,6 +11,8 @@ export interface GameProgressState {
     shrineActivated: boolean;
     shrineReadyAt: number;
     victoryAcknowledged: boolean;
+    upgradeSelected: boolean;
+    selectedUpgradeId: TrialUpgradeId | null;
 }
 
 export interface ObjectiveView {
@@ -30,7 +33,9 @@ const createInitialState = (trialNumber = 1): GameProgressState => ({
     chestOpened: false,
     shrineActivated: false,
     shrineReadyAt: 0,
-    victoryAcknowledged: false
+    victoryAcknowledged: false,
+    upgradeSelected: false,
+    selectedUpgradeId: null
 });
 
 export class GameProgressManager {
@@ -147,7 +152,17 @@ export class GameProgressManager {
 
     public startNextTrial(): void {
         if (this.state.phase !== 'victory') return;
+        if (!this.state.upgradeSelected) throw new Error('必须先选择一项试炼升级。');
         this.state = createInitialState(this.state.trialNumber + 1);
+        this.commit();
+    }
+
+    public selectUpgrade(upgradeId: TrialUpgradeId): void {
+        if (this.state.phase !== 'victory') throw new Error('只有完成试炼后才能选择升级。');
+        if (this.state.upgradeSelected) throw new Error('本轮试炼升级已经选择。');
+        if (!isTrialUpgradeId(upgradeId)) throw new TypeError('试炼升级选项无效。');
+        this.state.upgradeSelected = true;
+        this.state.selectedUpgradeId = upgradeId;
         this.commit();
     }
 
@@ -191,6 +206,13 @@ export class GameProgressManager {
         if (candidate.victoryAcknowledged && !candidate.shrineActivated) {
             throw new Error('关卡存档中胜利确认顺序无效。');
         }
+        const upgradeSelected = candidate.upgradeSelected ?? false;
+        const selectedUpgradeId = candidate.selectedUpgradeId ?? null;
+        if (typeof upgradeSelected !== 'boolean'
+            || (upgradeSelected && !isTrialUpgradeId(selectedUpgradeId))
+            || (!upgradeSelected && selectedUpgradeId !== null)) {
+            throw new Error('关卡存档中试炼升级状态无效。');
+        }
 
         this.state = {
             phase: 'guardians',
@@ -199,7 +221,9 @@ export class GameProgressManager {
             chestOpened: candidate.chestOpened,
             shrineActivated: candidate.shrineActivated,
             shrineReadyAt: candidate.shrineReadyAt!,
-            victoryAcknowledged: candidate.victoryAcknowledged
+            victoryAcknowledged: candidate.victoryAcknowledged,
+            upgradeSelected,
+            selectedUpgradeId
         };
         this.recalculatePhase();
         if (this.state.phase === 'victory' && this.state.victoryAcknowledged) {

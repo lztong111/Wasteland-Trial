@@ -7,6 +7,7 @@ import {
     type Stats,
     type Weapon
 } from './RPGTypes';
+import { isTrialUpgradeId, type TrialUpgradeId } from './TrialUpgrades';
 
 type Unsubscribe = () => void;
 
@@ -159,8 +160,36 @@ export class RPGManager {
         this.commitStats();
     }
 
+    public applyTrialUpgrade(upgradeId: TrialUpgradeId): void {
+        if (!isTrialUpgradeId(upgradeId)) throw new TypeError('试炼升级选项无效。');
+
+        switch (upgradeId) {
+            case 'vitality':
+                this.statsState.maxHp += gameConfig.progression.trialUpgradeHp;
+                this.statsState.hp = Math.min(
+                    this.statsState.maxHp,
+                    this.statsState.hp + gameConfig.progression.trialUpgradeHp
+                );
+                break;
+            case 'power':
+                this.statsState.baseDamage += gameConfig.progression.trialUpgradeDamage;
+                break;
+            case 'endurance':
+                this.statsState.maxStamina += gameConfig.progression.trialUpgradeStamina;
+                this.statsState.stamina = Math.min(
+                    this.statsState.maxStamina,
+                    this.statsState.stamina + gameConfig.progression.trialUpgradeStamina
+                );
+                break;
+        }
+        this.commitStats();
+    }
+
     public addItem(item: Item): void {
         this.validateItem(item);
+        if (this.inventoryState.length >= gameConfig.save.maxInventoryItems) {
+            throw new RangeError('背包已达到容量上限');
+        }
         if (this.inventoryState.some(existing => existing.id === item.id)) {
             throw new Error(`物品编号已存在：${item.id}`);
         }

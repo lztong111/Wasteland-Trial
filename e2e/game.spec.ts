@@ -17,10 +17,19 @@ test('玩家可以进入游戏、获得经验、打开背包并恢复存档', as
     await expect(page.getByText('战斗与闪避')).toBeVisible();
     await expect(page.getByText('目标与波次')).toBeVisible();
     await expect(page.getByText('成长与轮次')).toBeVisible();
+    await expect(page.getByText('完整操作表')).toBeVisible();
+    await expect(page.getByText('战斗判定')).toBeVisible();
+    await expect(page.getByText('成长与存档')).toBeVisible();
     await page.getByRole('button', { name: '开始试炼' }).click();
     await expect(page.getByLabel('操作说明')).toBeVisible();
     await expect(page.getByLabel('当前目标')).toContainText('清除遗迹守卫');
     await expect(page.getByLabel('当前目标')).toContainText('0 / 3');
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: '暂停菜单' })).toBeVisible();
+    await page.getByRole('button', { name: '重新查看玩法' }).click();
+    await expect(page.getByRole('dialog', { name: '准备进入遗迹' })).toBeVisible();
+    await page.getByRole('button', { name: '开始试炼' }).click();
 
     await page.locator('#renderCanvas').focus();
     await page.keyboard.press('KeyE');
@@ -72,6 +81,9 @@ test('胜利结算后进入下一轮并写入存档', async ({ page }) => {
     await confirmWelcome(page);
     await expect(page.getByRole('dialog', { name: '试炼完成' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel('当前目标')).toContainText('遗迹试炼完成');
+    await expect(page.getByRole('button', { name: '选择坚韧之心' })).toBeVisible();
+    await page.getByRole('button', { name: '选择坚韧之心' }).click();
+    await expect(page.getByLabel('生命')).toHaveAttribute('aria-valuemax', '120');
     await page.getByRole('button', { name: '进入下一轮' }).click();
     await expect(page.getByRole('dialog', { name: '试炼完成' })).toHaveCount(0);
 
@@ -200,4 +212,17 @@ test('移动鼠标即可转动镜头并支持指针锁定', async ({ page }) => 
     await page.evaluate(() => document.exitPointerLock());
     await expect.poll(() => page.evaluate(() => document.pointerLockElement?.id ?? null))
         .toBeNull();
+});
+
+test('移动端虚拟轻击按钮可以触发攻击', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect(page.getByText('正在加载物理引擎')).toHaveCount(0, { timeout: 15_000 });
+    await confirmWelcome(page);
+
+    const meleeButton = page.getByLabel('近战攻击');
+    await expect(meleeButton).toBeVisible();
+    await meleeButton.click();
+    await expect(page.getByLabel('体力')).toHaveAttribute('aria-valuenow', '90');
+    await expect(page.getByRole('status')).toContainText('轻击');
 });

@@ -46,6 +46,10 @@ export class InputManager {
         this.reset();
     }
 
+    public setVirtualAction(action: Action, isDown: boolean): void {
+        this.setAction(action, isDown);
+    }
+
     public dispose(): void {
         this.canvas.removeEventListener('keydown', this.handleKeyDown);
         this.canvas.removeEventListener('keyup', this.handleKeyUp);

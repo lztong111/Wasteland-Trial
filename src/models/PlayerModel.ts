@@ -8,6 +8,13 @@ import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder.pure';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { Scene } from '@babylonjs/core/scene';
+import { GltfAnimationController, type GltfAnimationState } from './GltfAnimationController';
+import {
+    loadGltfModel,
+    type GltfAssetSource,
+    type GltfLoadProgress,
+    type LoadedGltfModel
+} from './GltfModelLoader';
 
 interface PlayerPalette {
     armor: StandardMaterial;
@@ -32,6 +39,8 @@ export class PlayerModel {
     private readonly followTarget: TransformNode;
     private readonly groundShadow: Mesh;
     private animationTime = 0;
+    private externalModel: LoadedGltfModel | null = null;
+    private externalAnimations: GltfAnimationController | null = null;
 
     public constructor(scene: Scene, parent: TransformNode) {
         this.followTarget = parent;
@@ -62,6 +71,14 @@ export class PlayerModel {
 
     public update(deltaSeconds: number, isMoving: boolean, dodgeProgress: number | null = null): void {
         this.animationTime += deltaSeconds;
+        if (this.externalModel) {
+            const state: GltfAnimationState = dodgeProgress !== null
+                ? 'dodge'
+                : isMoving ? 'run' : 'idle';
+            this.externalAnimations?.play(state);
+            this.updateGroundShadow();
+            return;
+        }
         if (dodgeProgress !== null) {
             const arc = Math.sin(Math.min(1, dodgeProgress) * Math.PI);
             this.leftLeg.rotation.x = -1.05;
@@ -88,6 +105,33 @@ export class PlayerModel {
         this.updateGroundShadow();
     }
 
+    public async loadExternalModel(
+        source: GltfAssetSource,
+        onProgress?: (progress: GltfLoadProgress) => void
+    ): Promise<boolean> {
+        const loaded = await loadGltfModel(this.root.getScene(), source, onProgress);
+        if (!loaded) return false;
+
+        this.externalAnimations?.dispose();
+        this.externalModel?.dispose();
+        this.externalModel = loaded;
+        this.externalModel.root.parent = this.root;
+        this.externalAnimations = new GltfAnimationController(loaded.animationGroups);
+
+        // 有正式骨骼挂点时把武器锚点迁移过去；没有挂点仍保留程序化模型降级。
+        const weaponNode = loaded.findNode('weaponAnchor')
+            ?? loaded.findNode('hand_r')
+            ?? loaded.findNode('RightHand');
+        if (weaponNode) {
+            this.weaponAnchor.parent = weaponNode;
+            this.weaponAnchor.position.setAll(0);
+            this.weaponAnchor.rotation.setAll(0);
+        }
+        this.meshState.forEach(mesh => mesh.visibility = 0);
+        this.externalAnimations.play('idle');
+        return true;
+    }
+
     private updateGroundShadow(): void {
         const worldPosition = this.followTarget.getAbsolutePosition();
         this.groundShadow.position.x = worldPosition.x;
@@ -95,6 +139,10 @@ export class PlayerModel {
     }
 
     public dispose(): void {
+        this.externalAnimations?.dispose();
+        this.externalModel?.dispose();
+        this.externalAnimations = null;
+        this.externalModel = null;
         this.groundShadow.dispose();
         this.root.dispose(false);
         this.materials.forEach(material => material.dispose());

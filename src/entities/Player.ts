@@ -10,6 +10,7 @@ import { Scene } from '@babylonjs/core/scene';
 import { InputManager, Action } from '../systems/InputManager';
 import { gameConfig } from '../config/gameConfig';
 import { PlayerModel } from '../models/PlayerModel';
+import type { GltfAssetSource, GltfLoadProgress } from '../models/GltfModelLoader';
 
 export class Player {
     public mesh!: Mesh;
@@ -74,6 +75,13 @@ export class Player {
         if (horizontal.lengthSquared() < 0.0001) return;
         horizontal.normalize();
         this.knockbackVelocity = horizontal.scale(gameConfig.player.hitKnockback);
+    }
+
+    public async loadVisualAsset(
+        source: GltfAssetSource,
+        onProgress?: (progress: GltfLoadProgress) => void
+    ): Promise<boolean> {
+        return this.model.loadExternalModel(source, onProgress);
     }
 
     public get canStartDodge(): boolean {

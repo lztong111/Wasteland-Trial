@@ -24,11 +24,25 @@ describe('GameProgressManager', () => {
         expect(manager.objective.phase).toBe('victory');
         expect(manager.shrineCooldownRemainingSeconds).toBe(12);
 
+        expect(() => manager.startNextTrial()).toThrow(/升级/);
+        manager.selectUpgrade('vitality');
         manager.startNextTrial();
         expect(manager.progress.trialNumber).toBe(2);
         expect(manager.objective.phase).toBe('guardians');
         expect(manager.progress.defeatedGuardians).toBe(0);
         expect(manager.progress.chestOpened).toBe(false);
+    });
+
+    it('每轮只能选择一次合法升级', () => {
+        const manager = new GameProgressManager();
+        for (let index = 0; index < 3; index += 1) manager.recordGuardianDefeated();
+        manager.recordChestOpened();
+        for (let index = 0; index < 3; index += 1) manager.recordGuardianDefeated();
+        manager.recordShrineActivated(0);
+
+        manager.selectUpgrade('power');
+        expect(manager.progress.selectedUpgradeId).toBe('power');
+        expect(() => manager.selectUpgrade('endurance')).toThrow(/已经选择/);
     });
 
     it('拒绝越过关卡顺序', () => {

@@ -17,6 +17,12 @@ import { gameConfig } from '../config/gameConfig';
 import { EnvironmentModel } from '../world/EnvironmentModel';
 import type { CombatCooldownState, CombatFeedbackHandler } from '../ui/feedback';
 import type { InteractPrompt } from '../systems/InteractionManager';
+import type { GltfLoadProgress } from '../models/GltfModelLoader';
+
+export interface GameLoadingState {
+    stage: 'physics' | 'scene' | 'player-model';
+    progress: number | null;
+}
 
 export class GameManager {
     private readonly engine: Engine;
@@ -44,7 +50,8 @@ export class GameManager {
         private readonly onCombatFeedback: CombatFeedbackHandler = () => undefined,
         private readonly onCooldownChange: (state: CombatCooldownState) => void = () => undefined,
         private readonly onPromptChange: (prompt: InteractPrompt | null) => void = () => undefined,
-        private readonly onPauseChange: (paused: boolean) => void = () => undefined
+        private readonly onPauseChange: (paused: boolean) => void = () => undefined,
+        private readonly onLoadingChange: (state: GameLoadingState) => void = () => undefined
     ) {
         this.engine = new Engine(this.canvas, true, {
             preserveDrawingBuffer: false,
@@ -59,6 +66,7 @@ export class GameManager {
         if (this.disposed) throw new Error('游戏实例已经释放，无法再次启动。');
         this.started = true;
 
+        this.onLoadingChange({ stage: 'physics', progress: null });
         await this.initPhysics();
         if (this.disposed) return;
 
@@ -68,8 +76,28 @@ export class GameManager {
         });
 
         this.inputManager = new InputManager(this.canvas);
+        this.onLoadingChange({ stage: 'scene', progress: 1 });
         this.environment = new EnvironmentModel(this.scene);
         this.player = new Player(this.scene, this.inputManager);
+        if (gameConfig.assets.playerModel) {
+            this.onLoadingChange({ stage: 'player-model', progress: 0 });
+            const reportProgress = (progress: GltfLoadProgress) => {
+                const ratio = progress.total > 0
+                    ? Math.max(0, Math.min(1, progress.loaded / progress.total))
+                    : null;
+                this.onLoadingChange({ stage: 'player-model', progress: ratio });
+            };
+            void this.player.loadVisualAsset(gameConfig.assets.playerModel, reportProgress).then(loaded => {
+                this.onLoadingChange({ stage: 'scene', progress: 1 });
+                if (!loaded) {
+                    this.onCombatFeedback({
+                        type: 'toast',
+                        text: '角色模型加载失败，已使用程序化模型',
+                        kind: 'warning'
+                    });
+                }
+            });
+        }
         this.enemyManager = new EnemyManager(
             this.scene,
             this.rpgManager,
@@ -123,6 +151,11 @@ export class GameManager {
 
     public playUiSound(): void {
         this.audio?.play('ui');
+    }
+
+    public setVirtualAction(action: Action, isDown: boolean): void {
+        if (this.paused) return;
+        this.inputManager?.setVirtualAction(action, isDown);
     }
 
     public playLevelUpSound(): void {

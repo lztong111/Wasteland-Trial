@@ -9,6 +9,9 @@ import { EnemyModel } from '../models/EnemyModel';
 import type { CombatFeedbackHandler } from '../ui/feedback';
 import type { AudioManager } from './AudioManager';
 import type { GamePhase, GameProgressManager } from '../data/GameProgressManager';
+import { ItemType, type Weapon } from '../data/RPGTypes';
+
+type EnemyArchetypeId = keyof typeof enemyConfig.archetypes;
 
 interface SpawnSlot {
     index: number;
@@ -26,6 +29,7 @@ interface Enemy {
     attackCooldownSeconds: number;
     hitFlashSeconds: number;
     windupSeconds: number;
+    archetype: EnemyArchetypeId;
 }
 
 interface PendingRespawn {
@@ -69,6 +73,10 @@ export class EnemyManager {
         return this.enemies.flatMap(enemy => enemy.model.meshes);
     }
 
+    public get activeEnemyArchetypes(): readonly EnemyArchetypeId[] {
+        return this.enemies.map(enemy => enemy.archetype);
+    }
+
     public update(deltaSeconds: number): void {
         this.syncProgressWave();
         this.updateRespawns(deltaSeconds);
@@ -106,8 +114,9 @@ export class EnemyManager {
                 }
             } else if (distance > enemyConfig.attackRange) {
                 const moveDir = this.computeAvoidanceDirection(enemy, toPlayer, distance);
+                const speedMultiplier = enemyConfig.archetypes[enemy.archetype].speedMultiplier;
                 enemy.model.root.position.addInPlace(
-                    moveDir.scale(enemyConfig.speed * deltaSeconds)
+                    moveDir.scale(enemyConfig.speed * speedMultiplier * deltaSeconds)
                 );
                 enemy.model.root.rotation.y = Math.atan2(moveDir.x, moveDir.z);
             } else if (enemy.attackCooldownSeconds === 0) {
@@ -213,22 +222,30 @@ export class EnemyManager {
             0,
             (this.progressManager?.progress.trialNumber ?? 1) - 1
         );
+        const archetype = this.resolveArchetype(slot);
+        const archetypeConfig = enemyConfig.archetypes[archetype];
         const maxHp = Math.round(
-            enemyConfig.maxHp * (1 + completedTrials * enemyConfig.trialHealthGrowthPerRound)
+            enemyConfig.maxHp
+                * archetypeConfig.healthMultiplier
+                * (1 + completedTrials * enemyConfig.trialHealthGrowthPerRound)
         );
         const attackDamage = Math.round(
             enemyConfig.attackDamage
+                * archetypeConfig.damageMultiplier
                 * (1 + completedTrials * enemyConfig.trialDamageGrowthPerRound)
         );
         const xpReward = Math.round(
-            enemyConfig.xpReward * (1 + completedTrials * enemyConfig.trialXpGrowthPerRound)
+            enemyConfig.xpReward
+                * archetypeConfig.xpMultiplier
+                * (1 + completedTrials * enemyConfig.trialXpGrowthPerRound)
         );
         const model = new EnemyModel(
             id,
             slot.position.clone(),
             SKIN_COLORS[slot.index % SKIN_COLORS.length],
             this.scene,
-            slot.index * 0.83
+            slot.index * 0.83,
+            archetypeConfig.modelScale
         );
         this.enemies.push({
             id,
@@ -240,8 +257,12 @@ export class EnemyManager {
             xpReward,
             attackCooldownSeconds: 0,
             hitFlashSeconds: 0,
-            windupSeconds: 0
+            windupSeconds: 0,
+            archetype
         });
+        if (archetype === 'boss') {
+            this.onFeedback({ type: 'toast', text: '小首领已进入战场', kind: 'warning' });
+        }
     }
 
     private damageEnemy(index: number, damage: number): void {
@@ -257,6 +278,7 @@ export class EnemyManager {
         enemy.model.dispose();
         this.enemies.splice(index, 1);
         this.rpgManager.addXP(enemy.xpReward);
+        this.tryDrop(enemy);
         this.progressManager?.recordGuardianDefeated();
         this.audio?.play('hit');
         this.onFeedback({ type: 'float', text: `+${enemy.xpReward} XP`, kind: 'xp' });
@@ -267,6 +289,37 @@ export class EnemyManager {
                 slot,
                 remainingSeconds: worldConfig.enemyRespawnDelaySeconds
             });
+        }
+    }
+
+    private resolveArchetype(slot: SpawnSlot): EnemyArchetypeId {
+        const phase = this.progressManager?.progress.phase;
+        if (phase === 'reinforcements') {
+            return slot.index === this.slots.length - 1 ? 'boss' : 'brute';
+        }
+        return 'grunt';
+    }
+
+    private tryDrop(enemy: Enemy): void {
+        const dropChance = enemyConfig.archetypes[enemy.archetype].dropChance;
+        if (dropChance <= 0 || Math.random() > dropChance) return;
+
+        const weapon: Weapon = {
+            id: `wpn_${enemy.archetype}_${enemy.id}`,
+            name: enemy.archetype === 'boss' ? '遗迹重刃' : '守卫裂刃',
+            type: ItemType.WEAPON_MELEE,
+            icon: '⚔',
+            description: enemy.archetype === 'boss'
+                ? '从小首领身上取得的沉重遗物，攻击力更高。'
+                : '重装守卫携带的锋利短刃。',
+            damage: enemy.archetype === 'boss' ? 12 : 7
+        };
+        try {
+            this.rpgManager.addItem(weapon);
+            this.onFeedback({ type: 'float', text: `获得 ${weapon.name}`, kind: 'xp' });
+            this.onFeedback({ type: 'toast', text: `掉落：${weapon.name}`, kind: 'system' });
+        } catch {
+            this.onFeedback({ type: 'toast', text: '背包已满，掉落未能拾取', kind: 'warning' });
         }
     }
 

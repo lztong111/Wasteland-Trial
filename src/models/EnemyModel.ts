@@ -39,13 +39,15 @@ export class EnemyModel {
         position: Vector3,
         skinColor: Color3,
         scene: Scene,
-        animationOffset: number
+        animationOffset: number,
+        modelScale = 1
     ) {
         this.animationTime = animationOffset;
         this.root = new TransformNode(`${name}Root`, scene);
         this.root.position.copyFrom(position);
         this.visualRoot = new TransformNode(`${name}Visual`, scene);
         this.visualRoot.parent = this.root;
+        this.visualRoot.scaling.setAll(modelScale);
         const palette = this.createPalette(name, skinColor, scene);
         this.eyeMaterial = palette.eye;
         this.healthMaterial = palette.health;
