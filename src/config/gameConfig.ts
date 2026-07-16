@@ -148,6 +148,9 @@ export const gameConfig = {
         enabledByDefault: true
     },
     assets: {
-        playerModel: null as { rootUrl: string; fileName: string } | null
+        playerModel: {
+            rootUrl: '/models/',
+            fileName: 'Xbot.glb'
+        } as { rootUrl: string; fileName: string } | null
     }
 } as const;

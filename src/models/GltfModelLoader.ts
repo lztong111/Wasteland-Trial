@@ -22,6 +22,16 @@ export interface LoadedGltfModel {
     dispose(): void;
 }
 
+export function matchesGltfNodeName(actualName: string, expectedName: string): boolean {
+    const actual = actualName.trim().toLowerCase();
+    const expected = expectedName.trim().toLowerCase();
+    if (actual === expected) return true;
+
+    // Mixamo 等导出器会添加命名空间，挂点匹配时只比较最后一段节点名。
+    const leafName = actual.split(/[:|/]/).at(-1);
+    return leafName === expected;
+}
+
 export async function loadGltfModel(
     scene: Scene,
     source: GltfAssetSource,
@@ -56,7 +66,10 @@ export async function loadGltfModel(
             root,
             meshes: result.meshes,
             animationGroups: result.animationGroups,
-            findNode: name => nodes.find(node => node.name === name) as TransformNode | null ?? null,
+            findNode: name => {
+                const found = nodes.find(node => matchesGltfNodeName(node.name, name));
+                return found ? found as TransformNode : null;
+            },
             dispose: () => {
                 result.animationGroups.forEach(group => group.dispose());
                 result.transformNodes.forEach(node => node.dispose(false));

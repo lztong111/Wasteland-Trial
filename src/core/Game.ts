@@ -87,7 +87,11 @@ export class GameManager {
                     : null;
                 this.onLoadingChange({ stage: 'player-model', progress: ratio });
             };
-            void this.player.loadVisualAsset(gameConfig.assets.playerModel, reportProgress).then(loaded => {
+            void this.player.loadVisualAsset(
+                gameConfig.assets.playerModel,
+                reportProgress
+            ).then(loaded => {
+                if (this.disposed) return;
                 this.onLoadingChange({ stage: 'scene', progress: 1 });
                 if (!loaded) {
                     this.onCombatFeedback({

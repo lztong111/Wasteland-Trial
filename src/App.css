@@ -61,6 +61,24 @@ button.button-secondary:hover {
     background: radial-gradient(ellipse at center, #2a1818 0%, #1a1010 70%);
 }
 
+.status-panel--asset {
+    inset: auto 16px 16px auto;
+    display: block;
+    width: min(260px, calc(100% - 32px));
+    padding: 0;
+    background: transparent;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.status-panel--asset .status-panel__card {
+    width: 100%;
+    padding: 14px 16px;
+    text-align: left;
+    justify-items: stretch;
+    background: rgba(12, 18, 26, 0.88);
+}
+
 .status-panel__card {
     display: grid;
     gap: 10px;

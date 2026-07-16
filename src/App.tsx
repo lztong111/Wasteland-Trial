@@ -166,6 +166,26 @@ function App() {
                     </div>
                 </div>
             )}
+            {gameStatus === 'ready'
+                && loadingState.stage === 'player-model'
+                && loadingState.progress !== null
+                && loadingState.progress < 1
+                && (
+                    <div className="status-panel status-panel--asset" role="status" aria-live="polite">
+                        <div className="status-panel__card">
+                            <strong>正在替换角色模型</strong>
+                            <span className="status-panel__hint">
+                                {Math.round(loadingState.progress * 100)}% · 可继续游戏
+                            </span>
+                            <div className="status-progress" aria-label="角色模型加载进度">
+                                <div
+                                    className="status-progress__fill"
+                                    style={{ transform: `scaleX(${loadingState.progress})` }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
             {gameStatus === 'error' && (
                 <div className="status-panel status-panel--error" role="alert">
                     <div className="status-panel__card status-panel__card--error">

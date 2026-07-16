@@ -113,6 +113,8 @@ export class PlayerModel {
         if (!loaded) return false;
 
         this.externalAnimations?.dispose();
+        // 先移出外部模型层级，避免替换 GLB 时连同长期复用的武器挂点一起释放。
+        this.weaponAnchor.parent = this.rightArm;
         this.externalModel?.dispose();
         this.externalModel = loaded;
         this.externalModel.root.parent = this.root;
@@ -140,6 +142,7 @@ export class PlayerModel {
 
     public dispose(): void {
         this.externalAnimations?.dispose();
+        this.weaponAnchor.parent = this.rightArm;
         this.externalModel?.dispose();
         this.externalAnimations = null;
         this.externalModel = null;
